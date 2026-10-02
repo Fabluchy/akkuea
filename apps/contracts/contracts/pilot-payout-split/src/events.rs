@@ -2,7 +2,7 @@
 
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String};
 
-use crate::{Currency, DistributionSummary};
+use crate::{Currency, DistributionSummary, HolderSettlement};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -79,6 +79,40 @@ pub fn emit_evidence_recorded(
 pub fn emit_distribution_executed(env: &Env, summary: DistributionSummary) {
     env.events()
         .publish((symbol_short!("dist"), summary.cycle_id.clone()), summary);
+}
+
+/// Emitted when a holder reclaims USDC reserved for a rejected swap leg.
+///
+/// The amount is the reserved balance that was released, so a watcher can
+/// confirm that every unit of withheld USDC left the contract exactly once.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithheldClaimedEvent {
+    pub holder: Address,
+    pub amount_usdc: i128,
+}
+
+pub fn emit_withheld_claimed(env: &Env, holder: Address, amount_usdc: i128) {
+    env.events().publish(
+        (symbol_short!("claim"),),
+        WithheldClaimedEvent {
+            holder,
+            amount_usdc,
+        },
+    );
+}
+
+/// Emitted once per holder per cycle with the settlement actually recorded.
+///
+/// Deliberately not emitted: per-holder settlement events would add one ledger
+/// entry each, which is what pushes a ten-holder `execute_distribution` past
+/// the footprint limit. The persisted per-cycle settlement record is the
+/// investor-facing source of truth, and it outlives events anyway.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HolderSettledEvent {
+    pub cycle_id: String,
+    pub settlement: HolderSettlement,
 }
 
 pub fn emit_paused(env: &Env, admin: Address) {

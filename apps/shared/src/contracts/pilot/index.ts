@@ -22,7 +22,28 @@ export type {
   PayoutInitializedEvent,
 } from "./payout-split.js";
 export { PayoutError } from "./payout-split.js";
-export type { EvidenceStatus } from "./payout-split.js";
+export type {
+  EvidenceStatus,
+  Currency,
+  ExitRecord,
+  HolderSettlement,
+  SwapFailureRecord,
+  EurcSwapPathStatus,
+  WithheldClaimedEvent,
+} from "./payout-split.js";
+export {
+  readSettlement,
+  readDistributionSummary,
+  readWithheldBalance,
+  readCurrencyPreference,
+  readExitStatus,
+} from "./settlement.js";
+export type {
+  PilotSettlementRecord,
+  PilotSettlementCurrency,
+  PilotDistributionSummary,
+  PilotExitRecord,
+} from "./settlement.js";
 export { readEvidence } from "./evidence.js";
 export type {
   PilotEvidenceRecord,

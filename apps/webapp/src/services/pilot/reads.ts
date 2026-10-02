@@ -3,9 +3,17 @@ import {
   PilotIncomeTokenClient,
   PilotPayoutSplitClient,
   PilotWhitelistClient,
+  readCurrencyPreference,
+  readDistributionSummary,
   readEvidence,
+  readExitStatus,
+  readSettlement,
+  readWithheldBalance,
+  type PilotDistributionSummary,
+  type PilotExitRecord,
   type PilotIncomeTokenClientInterface,
   type PilotPayoutSplitClientInterface,
+  type PilotSettlementCurrency,
   type PilotWhitelistClientInterface,
   type PilotCycleRecord,
   type PilotEvidenceRecord,
@@ -173,6 +181,92 @@ export async function fetchPayoutPaused(): Promise<boolean> {
   const { payout } = clients();
   const tx = await payout.is_paused();
   return tx.result;
+}
+
+/**
+ * Reads the terminal exit record, or undefined while the pilot is active.
+ *
+ * Read straight from contract storage: the dashboard never infers "wound down"
+ * from a stale cycle or a missing event.
+ */
+export async function fetchExitStatus(): Promise<PilotExitRecord | undefined> {
+  const { payout } = clients();
+  return readExitStatus(payout);
+}
+
+/**
+ * Reads the USDC a holder can currently reclaim via `claim_withheld`.
+ *
+ * This is the balance the contract is holding on the holder's behalf, not a
+ * locally derived figure, so the claim button reflects exactly what a signature
+ * would release.
+ */
+export async function fetchWithheldBalance(
+  address: string,
+): Promise<bigint> {
+  const { payout } = clients();
+  return readWithheldBalance(payout, address);
+}
+
+/** Reads a holder's settlement-currency preference; defaults to USDC on chain. */
+export async function fetchCurrencyPreference(
+  address: string,
+): Promise<PilotSettlementCurrency> {
+  const { payout } = clients();
+  return readCurrencyPreference(payout, address);
+}
+
+/** One settled cycle as the investor's payout history shows it. */
+export interface PilotPayoutHistoryEntry {
+  cycleId: string;
+  /** Amount actually delivered, denominated in `currency`. */
+  amount: bigint;
+  currency: PilotSettlementCurrency;
+  /** USDC reserved for this cycle because the leg was rejected. */
+  withheldUsdc: bigint;
+  /** Unix seconds the settlement was recorded. */
+  settledAt: number;
+  /** The cycle's persisted summary, when the cycle was distributed. */
+  summary?: PilotDistributionSummary;
+}
+
+/**
+ * Builds this holder's payout history from persisted contract state.
+ *
+ * Every figure comes from a stored `HolderSettlement` / `DistributionSummary`,
+ * never from re-deriving the pro-rata split: the point is that the history an
+ * investor reads is the history the chain recorded, and it stays readable when
+ * the RPC has dropped the corresponding events.
+ */
+export async function fetchPayoutHistory(
+  address: string,
+  cycleIds: string[],
+): Promise<PilotPayoutHistoryEntry[]> {
+  const { payout } = clients();
+
+  const entries = await Promise.all(
+    cycleIds.map(async (cycleId) => {
+      const [settlement, summary] = await Promise.all([
+        readSettlement(payout, cycleId, address),
+        readDistributionSummary(payout, cycleId),
+      ]);
+      if (!settlement) return undefined;
+      return { cycleId, settlement, summary };
+    }),
+  );
+
+  return entries
+    .filter(
+      (entry): entry is NonNullable<typeof entry> => entry !== undefined,
+    )
+    .map(({ cycleId, settlement, summary }) => ({
+      cycleId,
+      amount: settlement.amount,
+      currency: settlement.currency,
+      withheldUsdc: settlement.withheldUsdc,
+      settledAt: settlement.settledAt,
+      summary,
+    }));
 }
 
 export interface PilotHoldings {

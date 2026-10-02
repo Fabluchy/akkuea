@@ -4,11 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildCycleTimeline, type PilotCycleTimeline } from "@akkuea/shared";
 import type { ConnectionStatus } from "@/hooks/useLiveUpdates";
 import {
+  fetchCurrencyPreference,
+  fetchExitStatus,
   fetchPilotCycles,
   fetchPilotHoldings,
+  fetchPayoutHistory,
   fetchPayoutPaused,
+  fetchWithheldBalance,
   type PilotEvidenceDetail,
   type PilotHoldings,
+  type PilotPayoutHistoryEntry,
 } from "@/services/pilot/reads";
 
 /**
@@ -220,6 +225,80 @@ export function usePayoutPaused() {
   const state = usePolledRead(read);
   return {
     isPaused: state.data ?? false,
+    isLoading: state.isLoading,
+    error: state.error,
+    refetch: state.refetch,
+  };
+}
+
+/**
+ * Whether the pilot has been permanently exited, with the on-chain reason and
+ * timestamp.
+ *
+ * `undefined` means "not exited" until the read lands, so a dashboard renders
+ * no terminal banner rather than guessing one during the first poll.
+ */
+export function usePilotExitStatus() {
+  const read = useCallback(() => fetchExitStatus(), []);
+  const state = usePolledRead(read);
+  return {
+    exitStatus: state.data,
+    isExited: state.data !== undefined && state.data !== null,
+    isLoading: state.isLoading,
+    error: state.error,
+    refetch: state.refetch,
+  };
+}
+
+/** USDC the contract is currently holding on the holder's behalf. */
+export function useWithheldBalance(address: string | null | undefined) {
+  const read = useCallback(
+    () => fetchWithheldBalance(address as string),
+    [address],
+  );
+  const state = usePolledRead(read, { enabled: Boolean(address) });
+  return {
+    balance: state.data ?? BigInt(0),
+    isLoading: state.isLoading,
+    error: state.error,
+    refetch: state.refetch,
+  };
+}
+
+/** The connected holder's on-chain settlement-currency preference. */
+export function useCurrencyPreference(address: string | null | undefined) {
+  const read = useCallback(
+    () => fetchCurrencyPreference(address as string),
+    [address],
+  );
+  const state = usePolledRead(read, { enabled: Boolean(address) });
+  return {
+    preference: state.data ?? "USDC",
+    isLoading: state.isLoading,
+    error: state.error,
+    refetch: state.refetch,
+  };
+}
+
+/**
+ * The holder's payout history, read from persisted settlement records.
+ *
+ * Takes the cycle ids rather than deriving them itself, so the history and the
+ * timeline on the same page are always describing the same set of cycles.
+ */
+export function usePayoutHistory(
+  address: string | null | undefined,
+  cycleIds: string[],
+) {
+  // Serialized so a fresh array identity each render cannot retrigger the poll.
+  const key = cycleIds.join(",");
+  const read = useCallback(
+    () => fetchPayoutHistory(address as string, key ? key.split(",") : []),
+    [address, key],
+  );
+  const state = usePolledRead(read, { enabled: Boolean(address) });
+  return {
+    entries: (state.data ?? []) as PilotPayoutHistoryEntry[],
     isLoading: state.isLoading,
     error: state.error,
     refetch: state.refetch,

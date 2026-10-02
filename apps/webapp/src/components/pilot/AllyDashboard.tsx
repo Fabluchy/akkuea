@@ -2,9 +2,14 @@
 
 import { useMemo } from "react";
 import { ErrorBoundary, SectionErrorFallback } from "@/components/ui";
-import { usePayoutPaused, usePilotCycles } from "@/hooks/usePilotContract";
+import {
+  usePayoutPaused,
+  usePilotCycles,
+  usePilotExitStatus,
+} from "@/hooks/usePilotContract";
 import { CycleStatusTimeline } from "./CycleStatusTimeline";
 import { EvidenceSubmissionForm } from "./EvidenceSubmissionForm";
+import { PilotStateBanner } from "./PilotStateBanner";
 import { currentCycleId } from "./currentCycle";
 
 /**
@@ -24,12 +29,37 @@ export function AllyDashboard() {
     refetch,
   } = usePilotCycles();
   const { isPaused } = usePayoutPaused();
+  const exit = usePilotExitStatus();
 
   const cycleId = useMemo(() => currentCycleId(), []);
   const current = cycles.find((cycle) => cycle.cycleId === cycleId);
 
+  // Terminal state has to be visible here too: an ally whose pilot has wound
+  // down otherwise sees only a submission form that will never be accepted.
+  const undelivered = useMemo(
+    () =>
+      cycles.filter(
+        (cycle) =>
+          cycle.distribution === undefined &&
+          cycle.evidence?.status !== "rejected" &&
+          cycle.evidence?.status !== "disputed",
+      ).length,
+    [cycles],
+  );
+
+  const woundDown =
+    exit.isExited && undelivered > 0
+      ? { undeliveredCycleCount: undelivered }
+      : undefined;
+
   return (
     <div className="space-y-6">
+      <PilotStateBanner
+        isPaused={isPaused}
+        exitStatus={exit.exitStatus ?? undefined}
+        woundDown={woundDown}
+      />
+
       <ErrorBoundary fallback={<SectionErrorFallback onReset={refetch} />}>
         <EvidenceSubmissionForm
           cycleId={cycleId}
