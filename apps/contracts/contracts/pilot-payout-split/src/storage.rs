@@ -1,6 +1,9 @@
-use soroban_sdk::{contracttype, Address, Env, String, Vec};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Vec};
 
-use crate::{Currency, EvidenceRecord, ExitRecord, SwapFailureRecord};
+use crate::{
+    Currency, DistributionSummary, EvidenceRecord, ExitRecord, HolderSettlement, PayoutError,
+    SwapFailureRecord,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,6 +23,18 @@ pub enum DataKey {
     CurrencyPreference(Address),
     SwapFailures(String),
     Exit,
+    /// Persisted `DistributionSummary` for a cycle, written once at payout time.
+    DistributionSummary(String),
+    /// Persisted per-cycle settlement outcomes, one entry per paid holder.
+    ///
+    /// A single entry per cycle rather than one key per (cycle, holder): the
+    /// distribution already writes one entry per holder, and a max of
+    /// `MAX_HOLDERS` settlements in one vector keeps `execute_distribution`
+    /// inside the ledger-footprint budget at the supported holder count.
+    Settlements(String),
+    /// Running total of USDC reserved in this contract for a holder whose EURC
+    /// swap legs were rejected, and which they have not yet claimed.
+    WithheldBalance(Address),
 }
 
 pub struct Storage;
@@ -97,5 +112,89 @@ impl Storage {
 
     pub fn set_exit_record(env: &Env, record: &ExitRecord) {
         env.storage().instance().set(&DataKey::Exit, record);
+    }
+
+    /// Persisted distribution summary for a cycle.
+    ///
+    /// The returned `DistributionSummary` of `execute_distribution` and its
+    /// event both live only as long as the RPC keeps them, so the fee, the
+    /// delivered totals, and the withheld total for a cycle are written here as
+    /// well. An investor reading payout history months later gets the numbers
+    /// the chain actually recorded, not whatever an event log still happens to
+    /// retain.
+    pub fn distribution_summary(env: &Env, cycle_id: &String) -> Option<DistributionSummary> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::DistributionSummary(cycle_id.clone()))
+    }
+
+    pub fn set_distribution_summary(env: &Env, cycle_id: &String, summary: &DistributionSummary) {
+        env.storage()
+            .persistent()
+            .set(&DataKey::DistributionSummary(cycle_id.clone()), summary);
+    }
+
+    /// What each holder actually received for a cycle, and in which currency.
+    ///
+    /// Persisted per cycle so the investor view can answer "what was I paid, and
+    /// in what currency" from contract storage rather than by recomputing a
+    /// pro-rata split that could drift from the transfer that actually happened.
+    pub fn settlements(env: &Env, cycle_id: &String) -> Vec<HolderSettlement> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Settlements(cycle_id.clone()))
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    pub fn set_settlements(env: &Env, cycle_id: &String, settlements: &Vec<HolderSettlement>) {
+        env.storage()
+            .persistent()
+            .set(&DataKey::Settlements(cycle_id.clone()), settlements);
+    }
+
+    /// One holder's outcome within a cycle's settlements, if they were paid.
+    pub fn settlement(env: &Env, cycle_id: &String, holder: &Address) -> Option<HolderSettlement> {
+        for i in 0..Self::settlements(env, cycle_id).len() {
+            let entry = Self::settlements(env, cycle_id).get(i)?;
+            if entry.holder == *holder {
+                return Some(entry);
+            }
+        }
+        None
+    }
+
+    /// USDC reserved in this contract for a holder, claimable via
+    /// `claim_withheld`.
+    ///
+    /// Tracked per holder rather than as a single contract-wide figure so that
+    /// no unit of withheld USDC can be claimed by anyone but the holder it
+    /// belongs to: the release path debits this key and transfers exactly what
+    /// it holds.
+    pub fn withheld_balance(env: &Env, holder: &Address) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::WithheldBalance(holder.clone()))
+            .unwrap_or(0)
+    }
+
+    pub fn add_withheld(env: &Env, holder: &Address, amount: i128) {
+        let updated = Self::withheld_balance(env, holder)
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(env, PayoutError::ArithmeticOverflow));
+        env.storage()
+            .persistent()
+            .set(&DataKey::WithheldBalance(holder.clone()), &updated);
+    }
+
+    /// Debit a holder's reserved balance, returning the amount released.
+    ///
+    /// Zeroing the key rather than deleting it keeps the write explicit in the
+    /// ledger entry, so a double claim is visibly a debit of zero.
+    pub fn take_withheld(env: &Env, holder: &Address) -> i128 {
+        let current = Self::withheld_balance(env, holder);
+        env.storage()
+            .persistent()
+            .set(&DataKey::WithheldBalance(holder.clone()), &0i128);
+        current
     }
 }

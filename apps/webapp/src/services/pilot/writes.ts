@@ -2,6 +2,7 @@ import {
   buildContractClientOptions,
   PilotPayoutSplitClient,
   type PilotPayoutSplitClientInterface,
+  type PilotSettlementCurrency,
 } from "@akkuea/shared";
 import {
   assertPilotDeployed,
@@ -135,6 +136,43 @@ export async function flagDispute(
       reason: args.reason,
     }),
   );
+}
+
+/**
+ * Sets the connected holder's settlement-currency preference.
+ *
+ * Self-serve and gated by the holder's own signature: the contract rejects
+ * anyone else, so this cannot change another investor's setting. `Eurc` opts
+ * the holder into swap-based settlement at payout time; `Usdc` returns them to
+ * direct USDC payment.
+ */
+export async function setCurrencyPreference(
+  args: { holder: string; currency: PilotSettlementCurrency },
+  signXdr: SignXdr,
+): Promise<PilotTxResult> {
+  const client = payoutClient(args.holder, signXdr);
+  return send(
+    await client.set_currency_preference({
+      holder: args.holder,
+      currency: { tag: args.currency === "EURC" ? "Eurc" : "Usdc", values: undefined },
+    }),
+  );
+}
+
+/**
+ * Releases the USDC the contract reserved for a holder whose EURC swap leg was
+ * rejected.
+ *
+ * Payable only in USDC and only to the holder's own address. Deliberately
+ * callable while the contract is paused or exited: the funds are already owed,
+ * and `pause` / `exit` gate new distributions rather than the return of money.
+ */
+export async function claimWithheld(
+  holder: string,
+  signXdr: SignXdr,
+): Promise<PilotTxResult> {
+  const client = payoutClient(holder, signXdr);
+  return send(await client.claim_withheld({ holder }));
 }
 
 /**

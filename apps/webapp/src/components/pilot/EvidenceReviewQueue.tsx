@@ -22,6 +22,7 @@ import {
   type SignXdr,
 } from "@/services/pilot/writes";
 import { EvidenceStatusBadge } from "./EvidenceSubmissionForm";
+import { EvidenceVerifyControl } from "./EvidenceVerifyControl";
 import { formatCycleLabel, formatUsdc, shortenHash } from "./format";
 
 /** Statuses the operator still has something to do about. */
@@ -128,6 +129,15 @@ function QueueItem({ cycle, isPaused, onDone, wallet }: QueueItemProps) {
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
               {t("queue.openStatement")}
             </a>
+          )}
+          {/* The operator approves against a hash, so the review queue is
+              where re-hashing that document matters most: it is the one place
+              a reviewer can confirm the bytes behind the claim before acting. */}
+          {cycle.evidenceHashHex && (
+            <EvidenceVerifyControl
+              evidenceLink={cycle.evidenceLink}
+              expectedHex={cycle.evidenceHashHex}
+            />
           )}
         </div>
       </div>

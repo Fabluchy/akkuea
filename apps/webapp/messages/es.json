@@ -304,6 +304,71 @@
       "emptyTitle": "Aún no hay captura de la propiedad",
       "emptyDescription": "La propiedad del aliado todavía no se capturó en 3D. El historial de ciclos de arriba no se ve afectado.",
       "defaultName": "Propiedad del piloto"
+    },
+    "state": {
+      "pausedTitle": "Los pagos están pausados",
+      "pausedDescription": "El contrato de pago está pausado, por lo que no se puede registrar, revisar ni distribuir ningún ciclo nuevo. Un administrador puede reanudarlo; lo que te adeudan no se ve afectado.",
+      "exitedTitle": "Esta piloto ha terminado",
+      "exitedDescription": "El aliado y el operador finalizaron permanentemente esta piloto en la cadena. No se pueden registrar ni distribuir más ciclos.",
+      "woundDownTitle": "Esta piloto ha finalizado con ciclos sin pagar",
+      "woundDownDescription": "{count, plural, one {# ciclo no} other {# ciclos no}} se pagarán: la piloto terminó antes de que se distribuiran. Los fondos ya reservados para ti siguen pudiendo reclamarse.",
+      "reasonLabel": "Motivo indicado",
+      "exitedAt": "Finalizada el {date}"
+    },
+    "currency": {
+      "title": "Moneda de liquidación",
+      "current": "Actualmente se te paga en {currency}.",
+      "optInEurc": "Optar por EURC",
+      "switchToUsdc": "Cambiar a USDC",
+      "riskTitle": "Antes de optar",
+      "riskSwap": "Los pagos en EURC convierten tu parte mediante un AMM en el momento de la distribución, por lo que el monto que recibes depende de la liquidez de la reserva en ese momento.",
+      "riskFloor": "Cada ciclo lleva una tasa de cambio mínima firmada por el operador y el aliado. Si el mercado está por debajo de ese mínimo, tu conversión no se realiza.",
+      "riskFallback": "Una conversión rechazada nunca se pierde: tu USDC queda reservado en el contrato y puedes reclamarlo en cualquier momento.",
+      "confirmOptIn": "Optar por EURC",
+      "cancel": "Cancelar",
+      "connectFirst": "Conecta tu billetera para cambiar tu moneda de liquidación.",
+      "notWhitelisted": "Tu dirección debe estar aprobada en la lista del piloto para poder fijar una preferencia.",
+      "lockedPaused": "Las preferencias no pueden cambiar mientras el contrato de pago está pausado.",
+      "lockedExited": "Esta piloto ha terminado, por lo que la moneda de liquidación ya no se puede cambiar.",
+      "actionFailed": "La transacción no fue aceptada en la cadena."
+    },
+    "history": {
+      "title": "Historial de pagos",
+      "subtitle": "Leído del almacenamiento del contrato, por lo que se mantiene completo cuando los eventos expiran.",
+      "emptyTitle": "Todavía no hay pagos",
+      "emptyDescription": "Cuando se distribuya un ciclo, aquí aparecerá lo que recibiste realmente y en qué moneda.",
+      "currencyPaid": "Pagado en {currency}",
+      "currencyDeferred": "Retenido como USDC",
+      "settledAt": "Liquidado el {date}",
+      "fee": "Comisión de la plataforma {amount} USDC",
+      "withheldAmount": "{amount} USDC retenidos",
+      "withheldHint": "Tu conversión a EURC no se completó en este ciclo, por lo que esta parte queda reservada para ti en USDC. Reclámala abajo.",
+      "viewOnExplorer": "Ver en stellar.expert"
+    },
+    "withheld": {
+      "title": "Fondos retenidos",
+      "subtitle": "USDC que el contrato custodia en tu nombre.",
+      "explain": "Se rechazó una conversión de pago, por lo que esta parte quedó reservada en el contrato en lugar de enviarse. Reclámala para recibirla en USDC.",
+      "claim": "Reclamar USDC retenidos",
+      "connectFirst": "Conecta tu billetera para reclamar.",
+      "actionFailed": "El reclamo no fue aceptado en la cadena."
+    },
+    "verify": {
+      "action": "Verificar esta evidencia",
+      "match": "El documento coincide con el hash registrado en la cadena.",
+      "mismatch": "El documento no coincide con el hash registrado en la cadena.",
+      "expected": "esperado {hash}",
+      "computed": "obtenido {hash}",
+      "unreachable": {
+        "cors": "El navegador bloqueó la lectura de este documento (origen distinto).",
+        "network": "No se pudo obtener el documento.",
+        "not-found": "El documento ya no está disponible en este enlace.",
+        "unsupported": "Este enlace no puede leerse desde un navegador.",
+        "invalid-url": "El enlace registrado no es una dirección válida."
+      },
+      "unreachableHint": "Esto no es evidencia de una discrepancia. Descarga el documento y verifica tu copia.",
+      "useLocalFile": "Verificar un archivo descargado",
+      "localFileLabel": "Documento de evidencia a verificar"
     }
   }
 }

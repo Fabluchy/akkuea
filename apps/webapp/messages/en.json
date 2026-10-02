@@ -304,6 +304,71 @@
       "emptyTitle": "No property capture yet",
       "emptyDescription": "The ally's property has not been captured in 3D. The cycle history above is unaffected.",
       "defaultName": "Pilot property"
+    },
+    "state": {
+      "pausedTitle": "Payouts are paused",
+      "pausedDescription": "The payout contract is paused, so no new cycle can be submitted, reviewed, or distributed. An admin can resume it; nothing you are owed is affected.",
+      "exitedTitle": "This pilot has ended",
+      "exitedDescription": "The ally and operator permanently ended this pilot on-chain. No further cycles can be recorded or distributed.",
+      "woundDownTitle": "This pilot has wound down with undelivered cycles",
+      "woundDownDescription": "{count, plural, one {# cycle} other {# cycles}} will not be paid: the pilot was ended before they were distributed. Funds already reserved for you can still be claimed.",
+      "reasonLabel": "Reason given",
+      "exitedAt": "Ended on {date}"
+    },
+    "currency": {
+      "title": "Settlement currency",
+      "current": "You are currently paid in {currency}.",
+      "optInEurc": "Opt in to EURC",
+      "switchToUsdc": "Switch to USDC",
+      "riskTitle": "Before you opt in",
+      "riskSwap": "EURC payouts convert your share through an AMM at distribution time, so the amount you receive depends on pool liquidity at that moment.",
+      "riskFloor": "Each cycle carries a minimum exchange rate signed by both the operator and the ally. If the market is below that floor, your leg is not converted.",
+      "riskFallback": "A rejected leg is never lost: your USDC is reserved for you in the contract and can be claimed at any time.",
+      "confirmOptIn": "Opt in to EURC",
+      "cancel": "Cancel",
+      "connectFirst": "Connect your wallet to change your settlement currency.",
+      "notWhitelisted": "Your address must be approved on the pilot whitelist before it can set a preference.",
+      "lockedPaused": "Preferences cannot change while the payout contract is paused.",
+      "lockedExited": "This pilot has ended, so the settlement currency can no longer be changed.",
+      "actionFailed": "The transaction was not accepted on-chain."
+    },
+    "history": {
+      "title": "Payout history",
+      "subtitle": "Read from contract storage, so it stays complete after events age out.",
+      "emptyTitle": "No payouts yet",
+      "emptyDescription": "Once a cycle is distributed, what you were actually paid, and in which currency, appears here.",
+      "currencyPaid": "Paid in {currency}",
+      "currencyDeferred": "Held as USDC",
+      "settledAt": "Settled {date}",
+      "fee": "Platform fee {amount} USDC",
+      "withheldAmount": "{amount} USDC held",
+      "withheldHint": "Your EURC conversion was not completed for this cycle, so this share is reserved for you as USDC. Claim it below.",
+      "viewOnExplorer": "View on stellar.expert"
+    },
+    "withheld": {
+      "title": "Withheld funds",
+      "subtitle": "USDC the contract is holding on your behalf.",
+      "explain": "A payout conversion was rejected, so this share was reserved in the contract instead of being sent. Claim it to receive it as USDC.",
+      "claim": "Claim withheld USDC",
+      "connectFirst": "Connect your wallet to claim.",
+      "actionFailed": "The claim was not accepted on-chain."
+    },
+    "verify": {
+      "action": "Verify this evidence",
+      "match": "The document matches the hash recorded on-chain.",
+      "mismatch": "The document does not match the hash recorded on-chain.",
+      "expected": "expected {hash}",
+      "computed": "got {hash}",
+      "unreachable": {
+        "cors": "The browser blocked reading this document (cross-origin).",
+        "network": "The document could not be fetched.",
+        "not-found": "The document is no longer available at this link.",
+        "unsupported": "This link cannot be read by a browser.",
+        "invalid-url": "The recorded link is not a valid address."
+      },
+      "unreachableHint": "That is not evidence of a mismatch. Download the document and verify your copy instead.",
+      "useLocalFile": "Verify a downloaded file",
+      "localFileLabel": "Evidence document to verify"
     }
   }
 }

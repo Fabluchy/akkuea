@@ -47,4 +47,8 @@ pub enum PayoutError {
     EvidenceNotFound = 27,
     /// Number of holders exceeds the maximum supported bound.
     TooManyHolders = 28,
+    /// `claim_withheld` was invoked by a holder with no USDC reserved for them.
+    /// Covers both "never had a rejected swap leg" and "already claimed", so a
+    /// second claim of the same funds is rejected rather than paid twice.
+    NothingWithheld = 29,
 }

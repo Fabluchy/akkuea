@@ -4,30 +4,32 @@
  * (stellar contract bindings typescript) against apps/contracts/contracts/
  * pilot-payout-split.
  *
- * Regenerated for the evidence review lifecycle and the dual-signed
- * execute_distribution. Rebuild the contract and regenerate whenever the
- * interface changes; do not edit by hand.
+ * Regenerated from the local WASM build for the withheld-fund release path and
+ * persisted per-cycle settlement records. Rebuild the contract and regenerate
+ * whenever the interface changes; do not edit by hand.
  *
  * Post-processing applied (C4-015 quality standard):
- *  1. Inlined from the nested generated package into apps/shared/src directly
+ *  1. Unused generator imports pruned (Address, Result, numeric width aliases,
+ *     package re-exports) so the webapp's no-unused-vars lint passes.
+ *  2. Inlined from the nested generated package into apps/shared/src directly
  *     because the webapp tsconfig uses verbatimModuleSyntax + no DOM lib, making
  *     the generator's default nested-package output unresolvable by Turbopack.
- *  2. `ClientOptions`, `MethodOptions`, `Result` moved to `import type` (TS1484).
- *  3. `window` reference replaced with `globalThis` polyfill guard (TS2304).
- *  4. `override` added to `deploy` and `options` (TS4114 / TS4115).
- *  5. `Timepoint` / `Duration` defined locally as `bigint` aliases - not exported
+ *  3. `ClientOptions`, `MethodOptions`, `Result` moved to `import type` (TS1484).
+ *  4. `window` reference replaced with `globalThis` polyfill guard (TS2304).
+ *  5. `override` added to `deploy` and `options` (TS4114 / TS4115).
+ *  6. `Timepoint` / `Duration` defined locally as `bigint` aliases - not exported
  *     by `@stellar/stellar-sdk/contract` v13.x (TS2305).
- *  6. No `any` casts used anywhere in this file.
+ *  7. No `any` casts used anywhere in this file.
  */
 import { Buffer } from "buffer";
+import {
+  Client as ContractClient,
+  Spec as ContractSpec,
+} from "@stellar/stellar-sdk/contract";
 import type {
   AssembledTransaction,
   ClientOptions as ContractClientOptions,
   MethodOptions,
-} from "@stellar/stellar-sdk/contract";
-import {
-  Client as ContractClient,
-  Spec as ContractSpec,
 } from "@stellar/stellar-sdk/contract";
 import type { u32, u64, i128, Option } from "@stellar/stellar-sdk/contract";
 
@@ -39,12 +41,15 @@ if (typeof globalThis !== "undefined" && !globalThis.Buffer) {
   (globalThis as typeof globalThis & { Buffer: typeof Buffer }).Buffer = Buffer;
 }
 
+
+
+
 /**
  * Settlement currency chosen by a token holder. Absence of a stored
  * preference resolves to `Usdc`, so pre-existing holders are unaffected.
  */
-export type Currency =
-  { tag: "Usdc"; values: void } | { tag: "Eurc"; values: void };
+export type Currency = {tag: "Usdc", values: void} | {tag: "Eurc", values: void};
+
 
 /**
  * Durable on-chain record of a permanent ally/property exit. Written exactly
@@ -54,69 +59,101 @@ export type Currency =
  */
 export interface ExitRecord {
   /**
-   * Ledger timestamp of the `exit` invocation.
-   */
-  at: u64;
+ * Ledger timestamp of the `exit` invocation.
+ */
+at: u64;
   /**
-   * Free-text reason supplied by the two signing parties. Deliberately a
-   * string rather than an enum or hash-plus-off-chain-link so the dashboard
-   * can render why the exit happened directly from on-chain state (see
-   * docs/strategy/decision-log.md for the recorded rationale).
-   */
-  reason: string;
+ * Free-text reason supplied by the two signing parties. Deliberately a
+ * string rather than an enum or hash-plus-off-chain-link so the dashboard
+ * can render why the exit happened directly from on-chain state (see
+ * docs/strategy/decision-log.md for the recorded rationale).
+ */
+reason: string;
 }
+
 
 export interface HolderPayout {
   amount: i128;
   holder: string;
 }
 
+
 export interface EvidenceRecord {
   cycle_id: string;
   distributed: boolean;
   /**
-   * Ledger timestamp the payout executed. Zero until it does.
-   *
-   * Stored on the record rather than left to events, because an investor
-   * judging on-time against late needs this fact to outlive the RPC's event
-   * retention window.
-   */
-  distributed_at: u64;
+ * Ledger timestamp the payout executed. Zero until it does.
+ * 
+ * Stored on the record rather than left to events, because an investor
+ * judging on-time against late needs this fact to outlive the RPC's event
+ * retention window.
+ */
+distributed_at: u64;
   evidence_hash: Buffer;
   evidence_link: string;
   recorded_at: u64;
   /**
-   * Operator's stated reason on rejection or dispute. Empty otherwise.
-   */
-  review_reason: string;
+ * Operator's stated reason on rejection or dispute. Empty otherwise.
+ */
+review_reason: string;
   /**
-   * Ledger timestamp the operator reviewed it. Zero while unreviewed.
-   */
-  reviewed_at: u64;
+ * Ledger timestamp the operator reviewed it. Zero while unreviewed.
+ */
+reviewed_at: u64;
   /**
-   * Where this cycle sits in the human review lifecycle.
-   */
-  status: EvidenceStatus;
+ * Where this cycle sits in the human review lifecycle.
+ */
+status: EvidenceStatus;
   /**
-   * Ledger timestamp the ally submitted the evidence.
-   */
-  submitted_at: u64;
+ * Ledger timestamp the ally submitted the evidence.
+ */
+submitted_at: u64;
   total_income: i128;
 }
 
 /**
  * Human review lifecycle of a cycle's income evidence.
- *
+ * 
  * The pilot's credibility argument rests on an investor being able to see that
  * a real person reviewed the ally's evidence, so every transition here is an
  * on-chain fact with its own event, not a client-side label.
  */
-export type EvidenceStatus =
-  | { tag: "Submitted"; values: void }
-  | { tag: "UnderReview"; values: void }
-  | { tag: "Approved"; values: void }
-  | { tag: "Rejected"; values: void }
-  | { tag: "Disputed"; values: void };
+export type EvidenceStatus = {tag: "Submitted", values: void} | {tag: "UnderReview", values: void} | {tag: "Approved", values: void} | {tag: "Rejected", values: void} | {tag: "Disputed", values: void};
+
+
+/**
+ * Outcome of settling one holder's share for one cycle.
+ * 
+ * Persisted per (cycle, holder) at distribution time. The investor-facing rule
+ * is that this record, not a client-side recomputation, is the answer to "what
+ * was I paid this cycle, and in what currency": `currency` and `amount` are
+ * written from the same values that moved tokens, so the dashboard cannot
+ * display a number the chain disagrees with.
+ */
+export interface HolderSettlement {
+  /**
+ * Amount actually delivered to the holder, denominated in `currency`.
+ * Zero when the share was withheld.
+ */
+amount: i128;
+  /**
+ * The currency this holder's share was actually delivered in. For a
+ * withheld leg this stays `Eurc` (the currency that was requested) while
+ * `withheld_usdc` is non-zero, because nothing was delivered in EURC.
+ */
+currency: Currency;
+  holder: string;
+  /**
+ * Ledger timestamp the settlement was recorded.
+ */
+settled_at: u64;
+  /**
+ * USDC reserved in this contract for this holder for this cycle because
+ * their EURC swap leg was rejected. Claimable via `claim_withheld`.
+ */
+withheld_usdc: i128;
+}
+
 
 /**
  * On-chain record of one rejected swap leg. Persisted per cycle so a rejected
@@ -127,10 +164,11 @@ export interface SwapFailureRecord {
   amount_usdc: i128;
   holder: string;
   /**
-   * `PayoutError` discriminant describing why the leg was rejected.
-   */
-  reason_code: u32;
+ * `PayoutError` discriminant describing why the leg was rejected.
+ */
+reason_code: u32;
 }
+
 
 /**
  * Live EURC settlement configuration reported to the dashboard. Replaces the
@@ -142,105 +180,118 @@ export interface EurcSwapPathStatus {
   usdc_token: string;
 }
 
+
 export interface DistributionSummary {
   cycle_id: string;
   /**
-   * Sum of pro-rata shares fully delivered, whether paid in USDC directly
-   * or swapped into EURC. Rejected swap legs are not counted here.
-   */
-  distributed_total: i128;
+ * Sum of pro-rata shares fully delivered, whether paid in USDC directly
+ * or swapped into EURC. Rejected swap legs are not counted here.
+ */
+distributed_total: i128;
   dust: i128;
   /**
-   * EURC actually received across successful swap legs.
-   */
-  eurc_distributed_total: i128;
+ * EURC actually received across successful swap legs.
+ */
+eurc_distributed_total: i128;
   holder_amount: i128;
   holder_count: u32;
   platform_fee: i128;
   /**
-   * Number of holders whose EURC swap leg was rejected this cycle.
-   */
-  swaps_failed: u32;
+ * Number of holders whose EURC swap leg was rejected this cycle.
+ */
+swaps_failed: u32;
   total_income: i128;
   /**
-   * USDC withheld in this contract for holders whose swap legs failed.
-   */
-  undistributed_failed_swaps: i128;
+ * USDC withheld in this contract for holders whose swap legs failed.
+ */
+undistributed_failed_swaps: i128;
 }
 
 export const PayoutError = {
-  1: { message: "AlreadyInitialized" },
-  2: { message: "NotInitialized" },
-  3: { message: "Unauthorized" },
-  4: { message: "ContractPaused" },
-  5: { message: "InvalidEvidenceHash" },
-  6: { message: "MissingEvidenceLink" },
-  7: { message: "ZeroAmount" },
-  8: { message: "CycleAlreadyRecorded" },
-  9: { message: "CycleNotRecorded" },
-  10: { message: "CycleAlreadyDistributed" },
-  11: { message: "EmptyHolderSet" },
-  12: { message: "RecipientNotApproved" },
-  13: { message: "ArithmeticOverflow" },
-  14: { message: "InsufficientPayoutBalance" },
-  15: { message: "Reentrancy" },
-  16: { message: "InternalInvariant" },
-  17: { message: "SignerCollision" },
+  1: {message:"AlreadyInitialized"},
+  2: {message:"NotInitialized"},
+  3: {message:"Unauthorized"},
+  4: {message:"ContractPaused"},
+  5: {message:"InvalidEvidenceHash"},
+  6: {message:"MissingEvidenceLink"},
+  7: {message:"ZeroAmount"},
+  8: {message:"CycleAlreadyRecorded"},
+  9: {message:"CycleNotRecorded"},
+  10: {message:"CycleAlreadyDistributed"},
+  11: {message:"EmptyHolderSet"},
+  12: {message:"RecipientNotApproved"},
+  13: {message:"ArithmeticOverflow"},
+  14: {message:"InsufficientPayoutBalance"},
+  15: {message:"Reentrancy"},
+  16: {message:"InternalInvariant"},
+  17: {message:"SignerCollision"},
   /**
    * A per-holder swap leg failed at the external venue (illiquidity, venue error).
    * The leg is rejected for that holder only; other holders are unaffected.
    */
-  18: { message: "SwapFailed" },
+  18: {message:"SwapFailed"},
   /**
    * The swap delivered less than the signed minimum-received bound.
    */
-  19: { message: "SlippageExceeded" },
+  19: {message:"SlippageExceeded"},
   /**
    * EURC/swap-router configuration is missing or inconsistent.
    */
-  20: { message: "RouterNotConfigured" },
+  20: {message:"RouterNotConfigured"},
   /**
    * A cycle with EURC-preference holders was executed without a positive
    * minimum exchange rate bound.
    */
-  21: { message: "InvalidMinRate" },
+  21: {message:"InvalidMinRate"},
   /**
    * The ally/property relationship has been permanently terminated via
    * `exit`; evidence recording and distribution execution are rejected
    * forever after. Distinct from `ContractPaused`, which is reversible.
    */
-  22: { message: "ContractExited" },
+  22: {message:"ContractExited"},
   /**
    * `exit` was invoked without a non-empty reason string.
    */
-  23: { message: "MissingExitReason" },
+  23: {message:"MissingExitReason"},
   /**
    * Distribution was requested for a cycle whose evidence is not approved.
    */
-  24: { message: "EvidenceNotApproved" },
+  24: {message:"EvidenceNotApproved"},
   /**
    * A review was requested on a cycle that is not awaiting one.
    */
-  25: { message: "InvalidStatusTransition" },
+  25: {message:"InvalidStatusTransition"},
   /**
    * A rejection or dispute was submitted without a reason string.
    */
-  26: { message: "MissingReviewReason" },
+  26: {message:"MissingReviewReason"},
   /**
    * No evidence record exists for the cycle.
    */
-  27: { message: "EvidenceNotFound" },
-};
+  27: {message:"EvidenceNotFound"},
+  /**
+   * Number of holders exceeds the maximum supported bound.
+   */
+  28: {message:"TooManyHolders"},
+  /**
+   * `claim_withheld` was invoked by a holder with no USDC reserved for them.
+   * Covers both "never had a rejected swap leg" and "already claimed", so a
+   * second claim of the same funds is rejected rather than paid twice.
+   */
+  29: {message:"NothingWithheld"}
+}
+
 
 export interface SwapFailedEvent {
   amount_usdc_retained: i128;
   cycle_id: string;
   holder: string;
   /**
-   * `PayoutError` discriminant describing why the leg was rejected.
-   */
-  reason_code: u32;
+ * `PayoutError` discriminant describing why the leg was rejected.
+ */
+reason_code: u32;
 }
+
 
 /**
  * Emitted once when the ally/property relationship is permanently terminated.
@@ -254,12 +305,40 @@ export interface ExitRecordedEvent {
   reason: string;
 }
 
+
 export interface SwapExecutedEvent {
   amount_eurc_out: i128;
   amount_usdc_in: i128;
   cycle_id: string;
   holder: string;
 }
+
+
+/**
+ * Emitted once per holder per cycle with the settlement actually recorded.
+ * 
+ * Deliberately not emitted: per-holder settlement events would add one ledger
+ * entry each, which is what pushes a ten-holder `execute_distribution` past
+ * the footprint limit. The persisted per-cycle settlement record is the
+ * investor-facing source of truth, and it outlives events anyway.
+ */
+export interface HolderSettledEvent {
+  cycle_id: string;
+  settlement: HolderSettlement;
+}
+
+
+/**
+ * Emitted when a holder reclaims USDC reserved for a rejected swap leg.
+ * 
+ * The amount is the reserved balance that was released, so a watcher can
+ * confirm that every unit of withheld USDC left the contract exactly once.
+ */
+export interface WithheldClaimedEvent {
+  amount_usdc: i128;
+  holder: string;
+}
+
 
 export interface EvidenceDisputedEvent {
   caller: string;
@@ -268,12 +347,14 @@ export interface EvidenceDisputedEvent {
   reason: string;
 }
 
+
 export interface EvidenceRecordedEvent {
   ally: string;
   cycle_id: string;
   operator: string;
   total_income: i128;
 }
+
 
 export interface EvidenceReviewedEvent {
   approved: boolean;
@@ -283,6 +364,7 @@ export interface EvidenceReviewedEvent {
   reviewed_at: u64;
 }
 
+
 export interface EvidenceSubmittedEvent {
   ally: string;
   cycle_id: string;
@@ -290,258 +372,193 @@ export interface EvidenceSubmittedEvent {
   total_income: i128;
 }
 
+
 export interface PayoutInitializedEvent {
   admin: string;
   ally: string;
   operator: string;
 }
 
+
 export interface CurrencyPreferenceSetEvent {
   currency: Currency;
   holder: string;
 }
 
-export type DataKey =
-  | { tag: "Admin"; values: void }
-  | { tag: "Operator"; values: void }
-  | { tag: "Ally"; values: void }
-  | { tag: "PlatformFeeRecipient"; values: void }
-  | { tag: "IncomeToken"; values: void }
-  | { tag: "Whitelist"; values: void }
-  | { tag: "UsdcToken"; values: void }
-  | { tag: "EurcToken"; values: void }
-  | { tag: "SwapRouter"; values: void }
-  | { tag: "Paused"; values: void }
-  | { tag: "Guard"; values: void }
-  | { tag: "Evidence"; values: readonly [string] }
-  | { tag: "CurrencyPreference"; values: readonly [string] }
-  | { tag: "SwapFailures"; values: readonly [string] }
-  | { tag: "Exit"; values: void };
+export type DataKey = {tag: "Admin", values: void} | {tag: "Operator", values: void} | {tag: "Ally", values: void} | {tag: "PlatformFeeRecipient", values: void} | {tag: "IncomeToken", values: void} | {tag: "Whitelist", values: void} | {tag: "UsdcToken", values: void} | {tag: "EurcToken", values: void} | {tag: "SwapRouter", values: void} | {tag: "Paused", values: void} | {tag: "Guard", values: void} | {tag: "Evidence", values: readonly [string]} | {tag: "CurrencyPreference", values: readonly [string]} | {tag: "SwapFailures", values: readonly [string]} | {tag: "Exit", values: void} | {tag: "DistributionSummary", values: readonly [string]} | {tag: "Settlements", values: readonly [string]} | {tag: "WithheldBalance", values: readonly [string]};
 
+/**
+ * The contract's call surface, described independently of the client class.
+ *
+ * The generated clients build this surface from the contract spec at runtime;
+ * the matching interface is what describes it to TypeScript. Callers reach it
+ * through the `as unknown as PilotPayoutSplitClientInterface` cast used
+ * throughout the webapp read/write layers.
+ */
 export interface PilotPayoutSplitClientInterface {
   /**
    * Construct and simulate a exit transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Permanently terminate the ally/property relationship.
-   *
+   * 
    * One-way and irreversible: once called, `record_evidence` and
    * `execute_distribution` reject every subsequent invocation with
    * `PayoutError::ContractExited`, and no un-exit or reversal function
    * exists. This is deliberately a separate gate from `pause`/`unpause`:
    * pause is reversible and operational, exit is terminal and factual, so a
    * client can always tell "temporarily paused" from "this pilot is over."
-   *
+   * 
    * Gated by the same two-signer authorization as
    * `execute_distribution`: both `operator` and `ally` must authorize the
    * same invocation, since ending the relationship is at least as
    * consequential as approving a distribution. The `reason` is stored and
    * exposed on-chain via `exit_status` so a client can render why and when
    * the exit happened without any off-chain state.
-   *
+   * 
    * This function records the fact of exit only. It does not attempt any
    * fund-recovery, refund, pro-rata unwind, or legal wind-down logic: what
    * happens to already-collected or future funds is an open pr
    */
-  exit: (
-    {
-      operator,
-      ally,
-      reason,
-    }: { operator: string; ally: string; reason: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  exit: ({operator, ally, reason}: {operator: string, ally: string, reason: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a pause transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Pause evidence recording, preference changes, and distribution execution.
    */
-  pause: (
-    { admin }: { admin: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  pause: ({admin}: {admin: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a unpause transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Resume evidence recording, preference changes, and distribution execution.
    */
-  unpause: (
-    { admin }: { admin: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  unpause: ({admin}: {admin: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a is_paused transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Return whether the contract is paused.
    */
-  is_paused: (
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<boolean>>;
+  is_paused: (options?: MethodOptions) => Promise<AssembledTransaction<boolean>>
 
   /**
    * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Initialize payout configuration, including the two required evidence approvers.
-   *
+   * 
    * `eurc_token` is the EURC asset contract offered as settlement alternative
    * and `swap_router` the verified Soroswap AMM router used to convert USDC
    * shares at payout time. Both are stored, never hardcoded.
    */
-  initialize: (
-    {
-      admin,
-      operator,
-      ally,
-      platform_fee_recipient,
-      income_token,
-      whitelist,
-      usdc_token,
-      eurc_token,
-      swap_router,
-    }: {
-      admin: string;
-      operator: string;
-      ally: string;
-      platform_fee_recipient: string;
-      income_token: string;
-      whitelist: string;
-      usdc_token: string;
-      eurc_token: string;
-      swap_router: string;
-    },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  initialize: ({admin, operator, ally, platform_fee_recipient, income_token, whitelist, usdc_token, eurc_token, swap_router}: {admin: string, operator: string, ally: string, platform_fee_recipient: string, income_token: string, whitelist: string, usdc_token: string, eurc_token: string, swap_router: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a exit_status transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Return the terminal exit record, or `None` while the pilot is active.
-   *
+   * 
    * Read-only and self-contained: a client needs no cross-contract call and
    * no off-chain state to distinguish "not exited" (None) from a permanent
    * exit (the recorded reason and timestamp).
    */
-  exit_status: (
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<Option<ExitRecord>>>;
+  exit_status: (options?: MethodOptions) => Promise<AssembledTransaction<Option<ExitRecord>>>
 
   /**
    * Construct and simulate a flag_dispute transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Flag a cycle as disputed. Callable by the admin or the operator.
-   *
+   * 
    * A disputed cycle cannot be distributed until it is resubmitted and
    * reviewed again, and it counts against the ally in the investor timeline.
    */
-  flag_dispute: (
-    {
-      caller,
-      cycle_id,
-      reason,
-    }: { caller: string; cycle_id: string; reason: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  flag_dispute: ({caller, cycle_id, reason}: {caller: string, cycle_id: string, reason: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a get_evidence transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Return an evidence record for a cycle, if present.
    */
-  get_evidence: (
-    { cycle_id }: { cycle_id: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<Option<EvidenceRecord>>>;
+  get_evidence: ({cycle_id}: {cycle_id: string}, options?: MethodOptions) => Promise<AssembledTransaction<Option<EvidenceRecord>>>
 
   /**
    * Construct and simulate a start_review transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Move a submitted cycle into `UnderReview`.
-   *
+   * 
    * This exists so an ally can see that their submission was actually picked
    * up, instead of staring at an unchanged `Submitted` badge for days.
    */
-  start_review: (
-    { operator, cycle_id }: { operator: string; cycle_id: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  start_review: ({operator, cycle_id}: {operator: string, cycle_id: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a claim_withheld transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Release USDC reserved for a holder whose EURC swap leg was rejected.
+   * 
+   * Self-serve and payable only in USDC: `holder` signs for itself, so no
+   * other address can ever release someone else's reserved balance, and the
+   * amount transferred is exactly the balance this contract is holding on
+   * that holder's behalf.
+   * 
+   * Deliberately not gated on `pause` or `exit`. A holder must never be left
+   * unable to recover their own money because the pilot is paused or has
+   * wound down: those flags gate new distributions, not the return of funds
+   * already owed. Claiming is also not a swap retry, so it needs no price
+   * floor and no operator co-signature - the alternative to EURC settlement
+   * here is the currency the share was originally denominated in.
+   * 
+   * A holder with nothing reserved is rejected with
+   * `PayoutError::NothingWithheld`, which is also what a second claim of an
+   * already-claimed balance returns.
+   */
+  claim_withheld: ({holder}: {holder: string}, options?: MethodOptions) => Promise<AssembledTransaction<i128>>
+
+  /**
+   * Construct and simulate a get_settlement transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Return what a holder actually received for a cycle, if it was settled.
+   */
+  get_settlement: ({cycle_id, holder}: {cycle_id: string, holder: string}, options?: MethodOptions) => Promise<AssembledTransaction<Option<HolderSettlement>>>
+
+  /**
+   * Construct and simulate a get_settlements transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Return every holder's recorded outcome for a cycle.
+   */
+  get_settlements: ({cycle_id}: {cycle_id: string}, options?: MethodOptions) => Promise<AssembledTransaction<Array<HolderSettlement>>>
 
   /**
    * Construct and simulate a record_evidence transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Record a monthly income evidence reference and approve the distribution amount.
-   *
+   * 
    * Both `operator` and `ally` must sign the same invocation through native Soroban auth.
    */
-  record_evidence: (
-    {
-      operator,
-      ally,
-      cycle_id,
-      evidence_hash,
-      evidence_link,
-      total_income,
-    }: {
-      operator: string;
-      ally: string;
-      cycle_id: string;
-      evidence_hash: Buffer;
-      evidence_link: string;
-      total_income: i128;
-    },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  record_evidence: ({operator, ally, cycle_id, evidence_hash, evidence_link, total_income}: {operator: string, ally: string, cycle_id: string, evidence_hash: Buffer, evidence_link: string, total_income: i128}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a review_evidence transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Approve or reject a cycle's evidence, with a reason on rejection.
    */
-  review_evidence: (
-    {
-      operator,
-      cycle_id,
-      approved,
-      reason,
-    }: {
-      operator: string;
-      cycle_id: string;
-      approved: boolean;
-      reason: string;
-    },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  review_evidence: ({operator, cycle_id, approved, reason}: {operator: string, cycle_id: string, approved: boolean, reason: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a submit_evidence transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Submit a cycle's income evidence for review.
-   *
+   * 
    * Only the ally signs. The cycle enters `Submitted` and waits for the
    * operator, which is what makes the review queue an on-chain fact rather
    * than an off-chain bookkeeping table. A cycle previously rejected may be
    * submitted again; an approved or distributed cycle may not.
    */
-  submit_evidence: (
-    {
-      ally,
-      cycle_id,
-      evidence_hash,
-      evidence_link,
-      total_income,
-    }: {
-      ally: string;
-      cycle_id: string;
-      evidence_hash: Buffer;
-      evidence_link: string;
-      total_income: i128;
-    },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  submit_evidence: ({ally, cycle_id, evidence_hash, evidence_link, total_income}: {ally: string, cycle_id: string, evidence_hash: Buffer, evidence_link: string, total_income: i128}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a withheld_balance transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Return the USDC currently reserved for a holder, claimable via
+   * `claim_withheld`.
+   */
+  withheld_balance: ({holder}: {holder: string}, options?: MethodOptions) => Promise<AssembledTransaction<i128>>
 
   /**
    * Construct and simulate a get_swap_failures transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Return the swap legs rejected during a cycle's distribution.
    */
-  get_swap_failures: (
-    { cycle_id }: { cycle_id: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<Array<SwapFailureRecord>>>;
+  get_swap_failures: ({cycle_id}: {cycle_id: string}, options?: MethodOptions) => Promise<AssembledTransaction<Array<SwapFailureRecord>>>
 
   /**
    * Construct and simulate a execute_distribution transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Execute the approved payout for a cycle, honoring each holder's
    * settlement-currency preference.
-   *
+   * 
    * Both signers must authorize the execution because they also carry the
    * price-guard responsibility: `min_eurc_per_usdc` is the minimum exchange
    * rate (scaled by `RATE_DENOMINATOR`) at which EURC-preference shares may
@@ -554,24 +571,11 @@ export interface PilotPayoutSplitClientInterface {
    * by the venue-enforced `amount_out_min`. The router rejects the leg before
    * moving any tokens when the pool cannot satisfy the bound, and this
    * contract re-verifies the delivered amount defensively afterwards.
-   *
+   * 
    * Failure isolation: a rejected swap leg (illiquidity, slippage breach,
-   * venue
+   * venue 
    */
-  execute_distribution: (
-    {
-      operator,
-      ally,
-      cycle_id,
-      min_eurc_per_usdc,
-    }: {
-      operator: string;
-      ally: string;
-      cycle_id: string;
-      min_eurc_per_usdc: i128;
-    },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<DistributionSummary>>;
+  execute_distribution: ({operator, ally, cycle_id, min_eurc_per_usdc}: {operator: string, ally: string, cycle_id: string, min_eurc_per_usdc: i128}, options?: MethodOptions) => Promise<AssembledTransaction<DistributionSummary>>
 
   /**
    * Construct and simulate a eurc_swap_path_status transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -579,30 +583,29 @@ export interface PilotPayoutSplitClientInterface {
    * initialization; after initialization the dashboard reads the actual
    * router and asset addresses instead of a hardcoded marker string.
    */
-  eurc_swap_path_status: (
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<Option<EurcSwapPathStatus>>>;
+  eurc_swap_path_status: (options?: MethodOptions) => Promise<AssembledTransaction<Option<EurcSwapPathStatus>>>
 
   /**
    * Construct and simulate a get_currency_preference transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Return a holder's settlement-currency preference; defaults to USDC.
    */
-  get_currency_preference: (
-    { holder }: { holder: string },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<Currency>>;
+  get_currency_preference: ({holder}: {holder: string}, options?: MethodOptions) => Promise<AssembledTransaction<Currency>>
 
   /**
    * Construct and simulate a set_currency_preference transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Set or update the caller's own settlement-currency preference.
-   *
+   * 
    * Self-serve: gated by `require_auth` to the holder's own address, and
    * restricted to addresses approved on the pilot whitelist.
    */
-  set_currency_preference: (
-    { holder, currency }: { holder: string; currency: Currency },
-    options?: MethodOptions,
-  ) => Promise<AssembledTransaction<null>>;
+  set_currency_preference: ({holder, currency}: {holder: string, currency: Currency}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a get_distribution_summary transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Return a cycle's persisted distribution summary, if it has been paid.
+   */
+  get_distribution_summary: ({cycle_id}: {cycle_id: string}, options?: MethodOptions) => Promise<AssembledTransaction<Option<DistributionSummary>>>
+
 }
 export class PilotPayoutSplitClient extends ContractClient {
   static override async deploy<T = PilotPayoutSplitClient>(
@@ -615,18 +618,18 @@ export class PilotPayoutSplitClient extends ContractClient {
         salt?: Buffer | Uint8Array;
         /** The format used to decode `wasmHash`, if it's provided as a string. */
         format?: "hex" | "base64";
-      },
+      }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy(null, options);
+    return ContractClient.deploy(null, options)
   }
   constructor(public override readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([
-        "AAAAAgAAAIhTZXR0bGVtZW50IGN1cnJlbmN5IGNob3NlbiBieSBhIHRva2VuIGhvbGRlci4gQWJzZW5jZSBvZiBhIHN0b3JlZApwcmVmZXJlbmNlIHJlc29sdmVzIHRvIGBVc2RjYCwgc28gcHJlLWV4aXN0aW5nIGhvbGRlcnMgYXJlIHVuYWZmZWN0ZWQuAAAAAAAAAAhDdXJyZW5jeQAAAAIAAAAAAAAAAAAAAARVc2RjAAAAAAAAAAAAAAAERXVyYw==",
+      new ContractSpec([ "AAAAAgAAAIhTZXR0bGVtZW50IGN1cnJlbmN5IGNob3NlbiBieSBhIHRva2VuIGhvbGRlci4gQWJzZW5jZSBvZiBhIHN0b3JlZApwcmVmZXJlbmNlIHJlc29sdmVzIHRvIGBVc2RjYCwgc28gcHJlLWV4aXN0aW5nIGhvbGRlcnMgYXJlIHVuYWZmZWN0ZWQuAAAAAAAAAAhDdXJyZW5jeQAAAAIAAAAAAAAAAAAAAARVc2RjAAAAAAAAAAAAAAAERXVyYw==",
         "AAAAAQAAARREdXJhYmxlIG9uLWNoYWluIHJlY29yZCBvZiBhIHBlcm1hbmVudCBhbGx5L3Byb3BlcnR5IGV4aXQuIFdyaXR0ZW4gZXhhY3RseQpvbmNlIGJ5IGBleGl0YCBhbmQgbmV2ZXIgcmVtb3ZlZDogaXQgaXMgdGhlIHRlcm1pbmFsIGNvdW50ZXJwYXJ0IHRvIHRoZQpyZXZlcnNpYmxlIGBwYXVzZWAgZmxhZywgbGV0dGluZyBhIGNsaWVudCBkaXN0aW5ndWlzaCAidGVtcG9yYXJpbHkgcGF1c2VkIgpmcm9tICJ0aGlzIHBpbG90IGlzIG92ZXIiIHdpdGhvdXQgYW55IG9mZi1jaGFpbiBzdGF0ZS4AAAAAAAAACkV4aXRSZWNvcmQAAAAAAAIAAAAqTGVkZ2VyIHRpbWVzdGFtcCBvZiB0aGUgYGV4aXRgIGludm9jYXRpb24uAAAAAAACYXQAAAAAAAYAAAEKRnJlZS10ZXh0IHJlYXNvbiBzdXBwbGllZCBieSB0aGUgdHdvIHNpZ25pbmcgcGFydGllcy4gRGVsaWJlcmF0ZWx5IGEKc3RyaW5nIHJhdGhlciB0aGFuIGFuIGVudW0gb3IgaGFzaC1wbHVzLW9mZi1jaGFpbi1saW5rIHNvIHRoZSBkYXNoYm9hcmQKY2FuIHJlbmRlciB3aHkgdGhlIGV4aXQgaGFwcGVuZWQgZGlyZWN0bHkgZnJvbSBvbi1jaGFpbiBzdGF0ZSAoc2VlCmRvY3Mvc3RyYXRlZ3kvZGVjaXNpb24tbG9nLm1kIGZvciB0aGUgcmVjb3JkZWQgcmF0aW9uYWxlKS4AAAAAAAZyZWFzb24AAAAAABA=",
         "AAAAAQAAAAAAAAAAAAAADEhvbGRlclBheW91dAAAAAIAAAAAAAAABmFtb3VudAAAAAAACwAAAAAAAAAGaG9sZGVyAAAAAAAT",
         "AAAAAQAAAAAAAAAAAAAADkV2aWRlbmNlUmVjb3JkAAAAAAALAAAAAAAAAAhjeWNsZV9pZAAAABAAAAAAAAAAC2Rpc3RyaWJ1dGVkAAAAAAEAAADZTGVkZ2VyIHRpbWVzdGFtcCB0aGUgcGF5b3V0IGV4ZWN1dGVkLiBaZXJvIHVudGlsIGl0IGRvZXMuCgpTdG9yZWQgb24gdGhlIHJlY29yZCByYXRoZXIgdGhhbiBsZWZ0IHRvIGV2ZW50cywgYmVjYXVzZSBhbiBpbnZlc3RvcgpqdWRnaW5nIG9uLXRpbWUgYWdhaW5zdCBsYXRlIG5lZWRzIHRoaXMgZmFjdCB0byBvdXRsaXZlIHRoZSBSUEMncyBldmVudApyZXRlbnRpb24gd2luZG93LgAAAAAAAA5kaXN0cmlidXRlZF9hdAAAAAAABgAAAAAAAAANZXZpZGVuY2VfaGFzaAAAAAAAAA4AAAAAAAAADWV2aWRlbmNlX2xpbmsAAAAAAAAQAAAAAAAAAAtyZWNvcmRlZF9hdAAAAAAGAAAAQk9wZXJhdG9yJ3Mgc3RhdGVkIHJlYXNvbiBvbiByZWplY3Rpb24gb3IgZGlzcHV0ZS4gRW1wdHkgb3RoZXJ3aXNlLgAAAAAADXJldmlld19yZWFzb24AAAAAAAAQAAAAQUxlZGdlciB0aW1lc3RhbXAgdGhlIG9wZXJhdG9yIHJldmlld2VkIGl0LiBaZXJvIHdoaWxlIHVucmV2aWV3ZWQuAAAAAAAAC3Jldmlld2VkX2F0AAAAAAYAAAA0V2hlcmUgdGhpcyBjeWNsZSBzaXRzIGluIHRoZSBodW1hbiByZXZpZXcgbGlmZWN5Y2xlLgAAAAZzdGF0dXMAAAAAB9AAAAAORXZpZGVuY2VTdGF0dXMAAAAAADFMZWRnZXIgdGltZXN0YW1wIHRoZSBhbGx5IHN1Ym1pdHRlZCB0aGUgZXZpZGVuY2UuAAAAAAAADHN1Ym1pdHRlZF9hdAAAAAYAAAAAAAAADHRvdGFsX2luY29tZQAAAAs=",
         "AAAAAgAAAQhIdW1hbiByZXZpZXcgbGlmZWN5Y2xlIG9mIGEgY3ljbGUncyBpbmNvbWUgZXZpZGVuY2UuCgpUaGUgcGlsb3QncyBjcmVkaWJpbGl0eSBhcmd1bWVudCByZXN0cyBvbiBhbiBpbnZlc3RvciBiZWluZyBhYmxlIHRvIHNlZSB0aGF0CmEgcmVhbCBwZXJzb24gcmV2aWV3ZWQgdGhlIGFsbHkncyBldmlkZW5jZSwgc28gZXZlcnkgdHJhbnNpdGlvbiBoZXJlIGlzIGFuCm9uLWNoYWluIGZhY3Qgd2l0aCBpdHMgb3duIGV2ZW50LCBub3QgYSBjbGllbnQtc2lkZSBsYWJlbC4AAAAAAAAADkV2aWRlbmNlU3RhdHVzAAAAAAAFAAAAAAAAAD9UaGUgYWxseSBzdWJtaXR0ZWQgZXZpZGVuY2UgYW5kIGl0IGlzIHdhaXRpbmcgZm9yIHRoZSBvcGVyYXRvci4AAAAACVN1Ym1pdHRlZAAAAAAAAAAAAAAyVGhlIG9wZXJhdG9yIG9wZW5lZCB0aGUgY3ljbGUgYW5kIGlzIHJldmlld2luZyBpdC4AAAAAAAtVbmRlclJldmlldwAAAAAAAAAAPVRoZSBvcGVyYXRvciBhcHByb3ZlZCB0aGUgZXZpZGVuY2UuIERpc3RyaWJ1dGlvbiBjYW4gZXhlY3V0ZS4AAAAAAAAIQXBwcm92ZWQAAAAAAAAAPlRoZSBvcGVyYXRvciByZWplY3RlZCB0aGUgZXZpZGVuY2UuIFRoZSBhbGx5IG1heSBzdWJtaXQgYWdhaW4uAAAAAAAIUmVqZWN0ZWQAAAAAAAAAQVRoZSBhZG1pbiBvciBvcGVyYXRvciBmbGFnZ2VkIGEgZGlzcHV0ZS4gRGlzdHJpYnV0aW9uIGlzIGJsb2NrZWQuAAAAAAAACERpc3B1dGVk",
+        "AAAAAQAAAY1PdXRjb21lIG9mIHNldHRsaW5nIG9uZSBob2xkZXIncyBzaGFyZSBmb3Igb25lIGN5Y2xlLgoKUGVyc2lzdGVkIHBlciAoY3ljbGUsIGhvbGRlcikgYXQgZGlzdHJpYnV0aW9uIHRpbWUuIFRoZSBpbnZlc3Rvci1mYWNpbmcgcnVsZQppcyB0aGF0IHRoaXMgcmVjb3JkLCBub3QgYSBjbGllbnQtc2lkZSByZWNvbXB1dGF0aW9uLCBpcyB0aGUgYW5zd2VyIHRvICJ3aGF0CndhcyBJIHBhaWQgdGhpcyBjeWNsZSwgYW5kIGluIHdoYXQgY3VycmVuY3kiOiBgY3VycmVuY3lgIGFuZCBgYW1vdW50YCBhcmUKd3JpdHRlbiBmcm9tIHRoZSBzYW1lIHZhbHVlcyB0aGF0IG1vdmVkIHRva2Vucywgc28gdGhlIGRhc2hib2FyZCBjYW5ub3QKZGlzcGxheSBhIG51bWJlciB0aGUgY2hhaW4gZGlzYWdyZWVzIHdpdGguAAAAAAAAAAAAABBIb2xkZXJTZXR0bGVtZW50AAAABQAAAGVBbW91bnQgYWN0dWFsbHkgZGVsaXZlcmVkIHRvIHRoZSBob2xkZXIsIGRlbm9taW5hdGVkIGluIGBjdXJyZW5jeWAuClplcm8gd2hlbiB0aGUgc2hhcmUgd2FzIHdpdGhoZWxkLgAAAAAAAAZhbW91bnQAAAAAAAsAAADMVGhlIGN1cnJlbmN5IHRoaXMgaG9sZGVyJ3Mgc2hhcmUgd2FzIGFjdHVhbGx5IGRlbGl2ZXJlZCBpbi4gRm9yIGEKd2l0aGhlbGQgbGVnIHRoaXMgc3RheXMgYEV1cmNgICh0aGUgY3VycmVuY3kgdGhhdCB3YXMgcmVxdWVzdGVkKSB3aGlsZQpgd2l0aGhlbGRfdXNkY2AgaXMgbm9uLXplcm8sIGJlY2F1c2Ugbm90aGluZyB3YXMgZGVsaXZlcmVkIGluIEVVUkMuAAAACGN1cnJlbmN5AAAH0AAAAAhDdXJyZW5jeQAAAAAAAAAGaG9sZGVyAAAAAAATAAAALUxlZGdlciB0aW1lc3RhbXAgdGhlIHNldHRsZW1lbnQgd2FzIHJlY29yZGVkLgAAAAAAAApzZXR0bGVkX2F0AAAAAAAGAAAAh1VTREMgcmVzZXJ2ZWQgaW4gdGhpcyBjb250cmFjdCBmb3IgdGhpcyBob2xkZXIgZm9yIHRoaXMgY3ljbGUgYmVjYXVzZQp0aGVpciBFVVJDIHN3YXAgbGVnIHdhcyByZWplY3RlZC4gQ2xhaW1hYmxlIHZpYSBgY2xhaW1fd2l0aGhlbGRgLgAAAAANd2l0aGhlbGRfdXNkYwAAAAAAAAs=",
         "AAAAAQAAAMNPbi1jaGFpbiByZWNvcmQgb2Ygb25lIHJlamVjdGVkIHN3YXAgbGVnLiBQZXJzaXN0ZWQgcGVyIGN5Y2xlIHNvIGEgcmVqZWN0ZWQKcGF5b3V0IGlzIGF1ZGl0YWJsZSBpbnN0ZWFkIG9mIHNpbGVudDsgdGhlIGNvcnJlc3BvbmRpbmcgVVNEQyBzdGF5cyBpbiB0aGlzCmNvbnRyYWN0LCByZXNlcnZlZCBmb3IgdGhlIGFmZmVjdGVkIGhvbGRlci4AAAAAAAAAABFTd2FwRmFpbHVyZVJlY29yZAAAAAAAAAMAAAAAAAAAC2Ftb3VudF91c2RjAAAAAAsAAAAAAAAABmhvbGRlcgAAAAAAEwAAAD9gUGF5b3V0RXJyb3JgIGRpc2NyaW1pbmFudCBkZXNjcmliaW5nIHdoeSB0aGUgbGVnIHdhcyByZWplY3RlZC4AAAAAC3JlYXNvbl9jb2RlAAAAAAQ=",
         "AAAAAQAAAHxMaXZlIEVVUkMgc2V0dGxlbWVudCBjb25maWd1cmF0aW9uIHJlcG9ydGVkIHRvIHRoZSBkYXNoYm9hcmQuIFJlcGxhY2VzIHRoZQpyZXRpcmVkIGhhcmRjb2RlZCBgInN0dWJiZWQtZmFzdC1mb2xsb3ciYCBtYXJrZXIuAAAAAAAAABJFdXJjU3dhcFBhdGhTdGF0dXMAAAAAAAMAAAAAAAAACmV1cmNfdG9rZW4AAAAAABMAAAAAAAAAC3N3YXBfcm91dGVyAAAAABMAAAAAAAAACnVzZGNfdG9rZW4AAAAAABM=",
         "AAAAAQAAAAAAAAAAAAAAE0Rpc3RyaWJ1dGlvblN1bW1hcnkAAAAACgAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAhFN1bSBvZiBwcm8tcmF0YSBzaGFyZXMgZnVsbHkgZGVsaXZlcmVkLCB3aGV0aGVyIHBhaWQgaW4gVVNEQyBkaXJlY3RseQpvciBzd2FwcGVkIGludG8gRVVSQy4gUmVqZWN0ZWQgc3dhcCBsZWdzIGFyZSBub3QgY291bnRlZCBoZXJlLgAAABFkaXN0cmlidXRlZF90b3RhbAAAAAAAAAsAAAAAAAAABGR1c3QAAAALAAAAM0VVUkMgYWN0dWFsbHkgcmVjZWl2ZWQgYWNyb3NzIHN1Y2Nlc3NmdWwgc3dhcCBsZWdzLgAAAAAWZXVyY19kaXN0cmlidXRlZF90b3RhbAAAAAAACwAAAAAAAAANaG9sZGVyX2Ftb3VudAAAAAAAAAsAAAAAAAAADGhvbGRlcl9jb3VudAAAAAQAAAAAAAAADHBsYXRmb3JtX2ZlZQAAAAsAAAA+TnVtYmVyIG9mIGhvbGRlcnMgd2hvc2UgRVVSQyBzd2FwIGxlZyB3YXMgcmVqZWN0ZWQgdGhpcyBjeWNsZS4AAAAAAAxzd2Fwc19mYWlsZWQAAAAEAAAAAAAAAAx0b3RhbF9pbmNvbWUAAAALAAAAQlVTREMgd2l0aGhlbGQgaW4gdGhpcyBjb250cmFjdCBmb3IgaG9sZGVycyB3aG9zZSBzd2FwIGxlZ3MgZmFpbGVkLgAAAAAAGnVuZGlzdHJpYnV0ZWRfZmFpbGVkX3N3YXBzAAAAAAAL",
@@ -639,46 +642,57 @@ export class PilotPayoutSplitClient extends ContractClient {
         "AAAAAAAAAM1GbGFnIGEgY3ljbGUgYXMgZGlzcHV0ZWQuIENhbGxhYmxlIGJ5IHRoZSBhZG1pbiBvciB0aGUgb3BlcmF0b3IuCgpBIGRpc3B1dGVkIGN5Y2xlIGNhbm5vdCBiZSBkaXN0cmlidXRlZCB1bnRpbCBpdCBpcyByZXN1Ym1pdHRlZCBhbmQKcmV2aWV3ZWQgYWdhaW4sIGFuZCBpdCBjb3VudHMgYWdhaW5zdCB0aGUgYWxseSBpbiB0aGUgaW52ZXN0b3IgdGltZWxpbmUuAAAAAAAADGZsYWdfZGlzcHV0ZQAAAAMAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAAAAAAZyZWFzb24AAAAAABAAAAAA",
         "AAAAAAAAADJSZXR1cm4gYW4gZXZpZGVuY2UgcmVjb3JkIGZvciBhIGN5Y2xlLCBpZiBwcmVzZW50LgAAAAAADGdldF9ldmlkZW5jZQAAAAEAAAAAAAAACGN5Y2xlX2lkAAAAEAAAAAEAAAPoAAAH0AAAAA5FdmlkZW5jZVJlY29yZAAA",
         "AAAAAAAAALdNb3ZlIGEgc3VibWl0dGVkIGN5Y2xlIGludG8gYFVuZGVyUmV2aWV3YC4KClRoaXMgZXhpc3RzIHNvIGFuIGFsbHkgY2FuIHNlZSB0aGF0IHRoZWlyIHN1Ym1pc3Npb24gd2FzIGFjdHVhbGx5IHBpY2tlZAp1cCwgaW5zdGVhZCBvZiBzdGFyaW5nIGF0IGFuIHVuY2hhbmdlZCBgU3VibWl0dGVkYCBiYWRnZSBmb3IgZGF5cy4AAAAADHN0YXJ0X3JldmlldwAAAAIAAAAAAAAACG9wZXJhdG9yAAAAEwAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAA==",
+        "AAAAAAAAA2xSZWxlYXNlIFVTREMgcmVzZXJ2ZWQgZm9yIGEgaG9sZGVyIHdob3NlIEVVUkMgc3dhcCBsZWcgd2FzIHJlamVjdGVkLgoKU2VsZi1zZXJ2ZSBhbmQgcGF5YWJsZSBvbmx5IGluIFVTREM6IGBob2xkZXJgIHNpZ25zIGZvciBpdHNlbGYsIHNvIG5vCm90aGVyIGFkZHJlc3MgY2FuIGV2ZXIgcmVsZWFzZSBzb21lb25lIGVsc2UncyByZXNlcnZlZCBiYWxhbmNlLCBhbmQgdGhlCmFtb3VudCB0cmFuc2ZlcnJlZCBpcyBleGFjdGx5IHRoZSBiYWxhbmNlIHRoaXMgY29udHJhY3QgaXMgaG9sZGluZyBvbgp0aGF0IGhvbGRlcidzIGJlaGFsZi4KCkRlbGliZXJhdGVseSBub3QgZ2F0ZWQgb24gYHBhdXNlYCBvciBgZXhpdGAuIEEgaG9sZGVyIG11c3QgbmV2ZXIgYmUgbGVmdAp1bmFibGUgdG8gcmVjb3ZlciB0aGVpciBvd24gbW9uZXkgYmVjYXVzZSB0aGUgcGlsb3QgaXMgcGF1c2VkIG9yIGhhcwp3b3VuZCBkb3duOiB0aG9zZSBmbGFncyBnYXRlIG5ldyBkaXN0cmlidXRpb25zLCBub3QgdGhlIHJldHVybiBvZiBmdW5kcwphbHJlYWR5IG93ZWQuIENsYWltaW5nIGlzIGFsc28gbm90IGEgc3dhcCByZXRyeSwgc28gaXQgbmVlZHMgbm8gcHJpY2UKZmxvb3IgYW5kIG5vIG9wZXJhdG9yIGNvLXNpZ25hdHVyZSAtIHRoZSBhbHRlcm5hdGl2ZSB0byBFVVJDIHNldHRsZW1lbnQKaGVyZSBpcyB0aGUgY3VycmVuY3kgdGhlIHNoYXJlIHdhcyBvcmlnaW5hbGx5IGRlbm9taW5hdGVkIGluLgoKQSBob2xkZXIgd2l0aCBub3RoaW5nIHJlc2VydmVkIGlzIHJlamVjdGVkIHdpdGgKYFBheW91dEVycm9yOjpOb3RoaW5nV2l0aGhlbGRgLCB3aGljaCBpcyBhbHNvIHdoYXQgYSBzZWNvbmQgY2xhaW0gb2YgYW4KYWxyZWFkeS1jbGFpbWVkIGJhbGFuY2UgcmV0dXJucy4AAAAOY2xhaW1fd2l0aGhlbGQAAAAAAAEAAAAAAAAABmhvbGRlcgAAAAAAEwAAAAEAAAAL",
+        "AAAAAAAAAEZSZXR1cm4gd2hhdCBhIGhvbGRlciBhY3R1YWxseSByZWNlaXZlZCBmb3IgYSBjeWNsZSwgaWYgaXQgd2FzIHNldHRsZWQuAAAAAAAOZ2V0X3NldHRsZW1lbnQAAAAAAAIAAAAAAAAACGN5Y2xlX2lkAAAAEAAAAAAAAAAGaG9sZGVyAAAAAAATAAAAAQAAA+gAAAfQAAAAEEhvbGRlclNldHRsZW1lbnQ=",
+        "AAAAAAAAADNSZXR1cm4gZXZlcnkgaG9sZGVyJ3MgcmVjb3JkZWQgb3V0Y29tZSBmb3IgYSBjeWNsZS4AAAAAD2dldF9zZXR0bGVtZW50cwAAAAABAAAAAAAAAAhjeWNsZV9pZAAAABAAAAABAAAD6gAAB9AAAAAQSG9sZGVyU2V0dGxlbWVudA==",
         "AAAAAAAAAKZSZWNvcmQgYSBtb250aGx5IGluY29tZSBldmlkZW5jZSByZWZlcmVuY2UgYW5kIGFwcHJvdmUgdGhlIGRpc3RyaWJ1dGlvbiBhbW91bnQuCgpCb3RoIGBvcGVyYXRvcmAgYW5kIGBhbGx5YCBtdXN0IHNpZ24gdGhlIHNhbWUgaW52b2NhdGlvbiB0aHJvdWdoIG5hdGl2ZSBTb3JvYmFuIGF1dGguAAAAAAAPcmVjb3JkX2V2aWRlbmNlAAAAAAYAAAAAAAAACG9wZXJhdG9yAAAAEwAAAAAAAAAEYWxseQAAABMAAAAAAAAACGN5Y2xlX2lkAAAAEAAAAAAAAAANZXZpZGVuY2VfaGFzaAAAAAAAAA4AAAAAAAAADWV2aWRlbmNlX2xpbmsAAAAAAAAQAAAAAAAAAAx0b3RhbF9pbmNvbWUAAAALAAAAAA==",
         "AAAAAAAAAEFBcHByb3ZlIG9yIHJlamVjdCBhIGN5Y2xlJ3MgZXZpZGVuY2UsIHdpdGggYSByZWFzb24gb24gcmVqZWN0aW9uLgAAAAAAAA9yZXZpZXdfZXZpZGVuY2UAAAAABAAAAAAAAAAIb3BlcmF0b3IAAAATAAAAAAAAAAhjeWNsZV9pZAAAABAAAAAAAAAACGFwcHJvdmVkAAAAAQAAAAAAAAAGcmVhc29uAAAAAAAQAAAAAA==",
         "AAAAAAAAATtTdWJtaXQgYSBjeWNsZSdzIGluY29tZSBldmlkZW5jZSBmb3IgcmV2aWV3LgoKT25seSB0aGUgYWxseSBzaWducy4gVGhlIGN5Y2xlIGVudGVycyBgU3VibWl0dGVkYCBhbmQgd2FpdHMgZm9yIHRoZQpvcGVyYXRvciwgd2hpY2ggaXMgd2hhdCBtYWtlcyB0aGUgcmV2aWV3IHF1ZXVlIGFuIG9uLWNoYWluIGZhY3QgcmF0aGVyCnRoYW4gYW4gb2ZmLWNoYWluIGJvb2trZWVwaW5nIHRhYmxlLiBBIGN5Y2xlIHByZXZpb3VzbHkgcmVqZWN0ZWQgbWF5IGJlCnN1Ym1pdHRlZCBhZ2FpbjsgYW4gYXBwcm92ZWQgb3IgZGlzdHJpYnV0ZWQgY3ljbGUgbWF5IG5vdC4AAAAAD3N1Ym1pdF9ldmlkZW5jZQAAAAAFAAAAAAAAAARhbGx5AAAAEwAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAAAAAA1ldmlkZW5jZV9oYXNoAAAAAAAADgAAAAAAAAANZXZpZGVuY2VfbGluawAAAAAAABAAAAAAAAAADHRvdGFsX2luY29tZQAAAAsAAAAA",
+        "AAAAAAAAAFBSZXR1cm4gdGhlIFVTREMgY3VycmVudGx5IHJlc2VydmVkIGZvciBhIGhvbGRlciwgY2xhaW1hYmxlIHZpYQpgY2xhaW1fd2l0aGhlbGRgLgAAABB3aXRoaGVsZF9iYWxhbmNlAAAAAQAAAAAAAAAGaG9sZGVyAAAAAAATAAAAAQAAAAs=",
         "AAAAAAAAADxSZXR1cm4gdGhlIHN3YXAgbGVncyByZWplY3RlZCBkdXJpbmcgYSBjeWNsZSdzIGRpc3RyaWJ1dGlvbi4AAAARZ2V0X3N3YXBfZmFpbHVyZXMAAAAAAAABAAAAAAAAAAhjeWNsZV9pZAAAABAAAAABAAAD6gAAB9AAAAARU3dhcEZhaWx1cmVSZWNvcmQAAAA=",
         "AAAAAAAABABFeGVjdXRlIHRoZSBhcHByb3ZlZCBwYXlvdXQgZm9yIGEgY3ljbGUsIGhvbm9yaW5nIGVhY2ggaG9sZGVyJ3MKc2V0dGxlbWVudC1jdXJyZW5jeSBwcmVmZXJlbmNlLgoKQm90aCBzaWduZXJzIG11c3QgYXV0aG9yaXplIHRoZSBleGVjdXRpb24gYmVjYXVzZSB0aGV5IGFsc28gY2FycnkgdGhlCnByaWNlLWd1YXJkIHJlc3BvbnNpYmlsaXR5OiBgbWluX2V1cmNfcGVyX3VzZGNgIGlzIHRoZSBtaW5pbXVtIGV4Y2hhbmdlCnJhdGUgKHNjYWxlZCBieSBgUkFURV9ERU5PTUlOQVRPUmApIGF0IHdoaWNoIEVVUkMtcHJlZmVyZW5jZSBzaGFyZXMgbWF5CmJlIGNvbnZlcnRlZC4gVGhpcyBib3VuZCBpcyBkZWxpYmVyYXRlbHkgc3VwcGxpZWQgcGVyIGN5Y2xlIGJ5IHRoZSBzYW1lCmR1YWwgc2lnbmF0dXJlIHRoYXQgYXBwcm92ZXMgYHRvdGFsX2luY29tZWAsIHJhdGhlciB0aGFuIGJlaW5nIGEgc3RhdGljCmluaXQtdGltZSBzbGlwcGFnZSB0b2xlcmFuY2U6IHdpdGhvdXQgYW4gb3JhY2xlIHRoZXJlIGlzIG5vIG9uLWNoYWluCnJlZmVyZW5jZSByYXRlIHRvIGFwcGx5IGEgdG9sZXJhbmNlIGFnYWluc3QsIGFuZCB0eWluZyB0aGUgZmxvb3IgdG8gdGhlCmFjY291bnRhYmxlIHNpZ25lcnMgbWVhbnMgb25seSBqb2ludCBvcGVyYXRvcithbGx5IGFjdGlvbiBjYW4gbW92ZSB0aGUKZWZmZWN0aXZlIHByaWNlIHdoaWxlIGV2ZXJ5IEVVUkMtb3B0ZWQgaG9sZGVyIG9mIHRoYXQgY3ljbGUgaXMgcHJvdGVjdGVkCmJ5IHRoZSB2ZW51ZS1lbmZvcmNlZCBgYW1vdW50X291dF9taW5gLiBUaGUgcm91dGVyIHJlamVjdHMgdGhlIGxlZyBiZWZvcmUKbW92aW5nIGFueSB0b2tlbnMgd2hlbiB0aGUgcG9vbCBjYW5ub3Qgc2F0aXNmeSB0aGUgYm91bmQsIGFuZCB0aGlzCmNvbnRyYWN0IHJlLXZlcmlmaWVzIHRoZSBkZWxpdmVyZWQgYW1vdW50IGRlZmVuc2l2ZWx5IGFmdGVyd2FyZHMuCgpGYWlsdXJlIGlzb2xhdGlvbjogYSByZWplY3RlZCBzd2FwIGxlZyAoaWxsaXF1aWRpdHksIHNsaXBwYWdlIGJyZWFjaCwKdmVudWUgAAAAFGV4ZWN1dGVfZGlzdHJpYnV0aW9uAAAABAAAAAAAAAAIb3BlcmF0b3IAAAATAAAAAAAAAARhbGx5AAAAEwAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAAAAABFtaW5fZXVyY19wZXJfdXNkYwAAAAAAAAsAAAABAAAH0AAAABNEaXN0cmlidXRpb25TdW1tYXJ5AA==",
         "AAAAAAAAAMlSZXBvcnQgdGhlIGxpdmUgRVVSQyBzZXR0bGVtZW50IGNvbmZpZ3VyYXRpb24uIFJldHVybnMgYE5vbmVgIGJlZm9yZQppbml0aWFsaXphdGlvbjsgYWZ0ZXIgaW5pdGlhbGl6YXRpb24gdGhlIGRhc2hib2FyZCByZWFkcyB0aGUgYWN0dWFsCnJvdXRlciBhbmQgYXNzZXQgYWRkcmVzc2VzIGluc3RlYWQgb2YgYSBoYXJkY29kZWQgbWFya2VyIHN0cmluZy4AAAAAAAAVZXVyY19zd2FwX3BhdGhfc3RhdHVzAAAAAAAAAAAAAAEAAAPoAAAH0AAAABJFdXJjU3dhcFBhdGhTdGF0dXMAAA==",
         "AAAAAAAAAENSZXR1cm4gYSBob2xkZXIncyBzZXR0bGVtZW50LWN1cnJlbmN5IHByZWZlcmVuY2U7IGRlZmF1bHRzIHRvIFVTREMuAAAAABdnZXRfY3VycmVuY3lfcHJlZmVyZW5jZQAAAAABAAAAAAAAAAZob2xkZXIAAAAAABMAAAABAAAH0AAAAAhDdXJyZW5jeQ==",
         "AAAAAAAAAL1TZXQgb3IgdXBkYXRlIHRoZSBjYWxsZXIncyBvd24gc2V0dGxlbWVudC1jdXJyZW5jeSBwcmVmZXJlbmNlLgoKU2VsZi1zZXJ2ZTogZ2F0ZWQgYnkgYHJlcXVpcmVfYXV0aGAgdG8gdGhlIGhvbGRlcidzIG93biBhZGRyZXNzLCBhbmQKcmVzdHJpY3RlZCB0byBhZGRyZXNzZXMgYXBwcm92ZWQgb24gdGhlIHBpbG90IHdoaXRlbGlzdC4AAAAAAAAXc2V0X2N1cnJlbmN5X3ByZWZlcmVuY2UAAAAAAgAAAAAAAAAGaG9sZGVyAAAAAAATAAAAAAAAAAhjdXJyZW5jeQAAB9AAAAAIQ3VycmVuY3kAAAAA",
-        "AAAABAAAAAAAAAAAAAAAC1BheW91dEVycm9yAAAAABsAAAAAAAAAEkFscmVhZHlJbml0aWFsaXplZAAAAAAAAQAAAAAAAAAOTm90SW5pdGlhbGl6ZWQAAAAAAAIAAAAAAAAADFVuYXV0aG9yaXplZAAAAAMAAAAAAAAADkNvbnRyYWN0UGF1c2VkAAAAAAAEAAAAAAAAABNJbnZhbGlkRXZpZGVuY2VIYXNoAAAAAAUAAAAAAAAAE01pc3NpbmdFdmlkZW5jZUxpbmsAAAAABgAAAAAAAAAKWmVyb0Ftb3VudAAAAAAABwAAAAAAAAAUQ3ljbGVBbHJlYWR5UmVjb3JkZWQAAAAIAAAAAAAAABBDeWNsZU5vdFJlY29yZGVkAAAACQAAAAAAAAAXQ3ljbGVBbHJlYWR5RGlzdHJpYnV0ZWQAAAAACgAAAAAAAAAORW1wdHlIb2xkZXJTZXQAAAAAAAsAAAAAAAAAFFJlY2lwaWVudE5vdEFwcHJvdmVkAAAADAAAAAAAAAASQXJpdGhtZXRpY092ZXJmbG93AAAAAAANAAAAAAAAABlJbnN1ZmZpY2llbnRQYXlvdXRCYWxhbmNlAAAAAAAADgAAAAAAAAAKUmVlbnRyYW5jeQAAAAAADwAAAAAAAAARSW50ZXJuYWxJbnZhcmlhbnQAAAAAAAAQAAAAAAAAAA9TaWduZXJDb2xsaXNpb24AAAAAEQAAAJZBIHBlci1ob2xkZXIgc3dhcCBsZWcgZmFpbGVkIGF0IHRoZSBleHRlcm5hbCB2ZW51ZSAoaWxsaXF1aWRpdHksIHZlbnVlIGVycm9yKS4KVGhlIGxlZyBpcyByZWplY3RlZCBmb3IgdGhhdCBob2xkZXIgb25seTsgb3RoZXIgaG9sZGVycyBhcmUgdW5hZmZlY3RlZC4AAAAAAApTd2FwRmFpbGVkAAAAAAASAAAAP1RoZSBzd2FwIGRlbGl2ZXJlZCBsZXNzIHRoYW4gdGhlIHNpZ25lZCBtaW5pbXVtLXJlY2VpdmVkIGJvdW5kLgAAAAAQU2xpcHBhZ2VFeGNlZWRlZAAAABMAAAA6RVVSQy9zd2FwLXJvdXRlciBjb25maWd1cmF0aW9uIGlzIG1pc3Npbmcgb3IgaW5jb25zaXN0ZW50LgAAAAAAE1JvdXRlck5vdENvbmZpZ3VyZWQAAAAAFAAAAGFBIGN5Y2xlIHdpdGggRVVSQy1wcmVmZXJlbmNlIGhvbGRlcnMgd2FzIGV4ZWN1dGVkIHdpdGhvdXQgYSBwb3NpdGl2ZQptaW5pbXVtIGV4Y2hhbmdlIHJhdGUgYm91bmQuAAAAAAAADkludmFsaWRNaW5SYXRlAAAAAAAVAAAAyVRoZSBhbGx5L3Byb3BlcnR5IHJlbGF0aW9uc2hpcCBoYXMgYmVlbiBwZXJtYW5lbnRseSB0ZXJtaW5hdGVkIHZpYQpgZXhpdGA7IGV2aWRlbmNlIHJlY29yZGluZyBhbmQgZGlzdHJpYnV0aW9uIGV4ZWN1dGlvbiBhcmUgcmVqZWN0ZWQKZm9yZXZlciBhZnRlci4gRGlzdGluY3QgZnJvbSBgQ29udHJhY3RQYXVzZWRgLCB3aGljaCBpcyByZXZlcnNpYmxlLgAAAAAAAA5Db250cmFjdEV4aXRlZAAAAAAAFgAAADVgZXhpdGAgd2FzIGludm9rZWQgd2l0aG91dCBhIG5vbi1lbXB0eSByZWFzb24gc3RyaW5nLgAAAAAAABFNaXNzaW5nRXhpdFJlYXNvbgAAAAAAABcAAABGRGlzdHJpYnV0aW9uIHdhcyByZXF1ZXN0ZWQgZm9yIGEgY3ljbGUgd2hvc2UgZXZpZGVuY2UgaXMgbm90IGFwcHJvdmVkLgAAAAAAE0V2aWRlbmNlTm90QXBwcm92ZWQAAAAAGAAAADtBIHJldmlldyB3YXMgcmVxdWVzdGVkIG9uIGEgY3ljbGUgdGhhdCBpcyBub3QgYXdhaXRpbmcgb25lLgAAAAAXSW52YWxpZFN0YXR1c1RyYW5zaXRpb24AAAAAGQAAAD1BIHJlamVjdGlvbiBvciBkaXNwdXRlIHdhcyBzdWJtaXR0ZWQgd2l0aG91dCBhIHJlYXNvbiBzdHJpbmcuAAAAAAAAE01pc3NpbmdSZXZpZXdSZWFzb24AAAAAGgAAAChObyBldmlkZW5jZSByZWNvcmQgZXhpc3RzIGZvciB0aGUgY3ljbGUuAAAAEEV2aWRlbmNlTm90Rm91bmQAAAAb",
+        "AAAAAAAAAEVSZXR1cm4gYSBjeWNsZSdzIHBlcnNpc3RlZCBkaXN0cmlidXRpb24gc3VtbWFyeSwgaWYgaXQgaGFzIGJlZW4gcGFpZC4AAAAAAAAYZ2V0X2Rpc3RyaWJ1dGlvbl9zdW1tYXJ5AAAAAQAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAQAAA+gAAAfQAAAAE0Rpc3RyaWJ1dGlvblN1bW1hcnkA",
+        "AAAABAAAAAAAAAAAAAAAC1BheW91dEVycm9yAAAAAB0AAAAAAAAAEkFscmVhZHlJbml0aWFsaXplZAAAAAAAAQAAAAAAAAAOTm90SW5pdGlhbGl6ZWQAAAAAAAIAAAAAAAAADFVuYXV0aG9yaXplZAAAAAMAAAAAAAAADkNvbnRyYWN0UGF1c2VkAAAAAAAEAAAAAAAAABNJbnZhbGlkRXZpZGVuY2VIYXNoAAAAAAUAAAAAAAAAE01pc3NpbmdFdmlkZW5jZUxpbmsAAAAABgAAAAAAAAAKWmVyb0Ftb3VudAAAAAAABwAAAAAAAAAUQ3ljbGVBbHJlYWR5UmVjb3JkZWQAAAAIAAAAAAAAABBDeWNsZU5vdFJlY29yZGVkAAAACQAAAAAAAAAXQ3ljbGVBbHJlYWR5RGlzdHJpYnV0ZWQAAAAACgAAAAAAAAAORW1wdHlIb2xkZXJTZXQAAAAAAAsAAAAAAAAAFFJlY2lwaWVudE5vdEFwcHJvdmVkAAAADAAAAAAAAAASQXJpdGhtZXRpY092ZXJmbG93AAAAAAANAAAAAAAAABlJbnN1ZmZpY2llbnRQYXlvdXRCYWxhbmNlAAAAAAAADgAAAAAAAAAKUmVlbnRyYW5jeQAAAAAADwAAAAAAAAARSW50ZXJuYWxJbnZhcmlhbnQAAAAAAAAQAAAAAAAAAA9TaWduZXJDb2xsaXNpb24AAAAAEQAAAJZBIHBlci1ob2xkZXIgc3dhcCBsZWcgZmFpbGVkIGF0IHRoZSBleHRlcm5hbCB2ZW51ZSAoaWxsaXF1aWRpdHksIHZlbnVlIGVycm9yKS4KVGhlIGxlZyBpcyByZWplY3RlZCBmb3IgdGhhdCBob2xkZXIgb25seTsgb3RoZXIgaG9sZGVycyBhcmUgdW5hZmZlY3RlZC4AAAAAAApTd2FwRmFpbGVkAAAAAAASAAAAP1RoZSBzd2FwIGRlbGl2ZXJlZCBsZXNzIHRoYW4gdGhlIHNpZ25lZCBtaW5pbXVtLXJlY2VpdmVkIGJvdW5kLgAAAAAQU2xpcHBhZ2VFeGNlZWRlZAAAABMAAAA6RVVSQy9zd2FwLXJvdXRlciBjb25maWd1cmF0aW9uIGlzIG1pc3Npbmcgb3IgaW5jb25zaXN0ZW50LgAAAAAAE1JvdXRlck5vdENvbmZpZ3VyZWQAAAAAFAAAAGFBIGN5Y2xlIHdpdGggRVVSQy1wcmVmZXJlbmNlIGhvbGRlcnMgd2FzIGV4ZWN1dGVkIHdpdGhvdXQgYSBwb3NpdGl2ZQptaW5pbXVtIGV4Y2hhbmdlIHJhdGUgYm91bmQuAAAAAAAADkludmFsaWRNaW5SYXRlAAAAAAAVAAAAyVRoZSBhbGx5L3Byb3BlcnR5IHJlbGF0aW9uc2hpcCBoYXMgYmVlbiBwZXJtYW5lbnRseSB0ZXJtaW5hdGVkIHZpYQpgZXhpdGA7IGV2aWRlbmNlIHJlY29yZGluZyBhbmQgZGlzdHJpYnV0aW9uIGV4ZWN1dGlvbiBhcmUgcmVqZWN0ZWQKZm9yZXZlciBhZnRlci4gRGlzdGluY3QgZnJvbSBgQ29udHJhY3RQYXVzZWRgLCB3aGljaCBpcyByZXZlcnNpYmxlLgAAAAAAAA5Db250cmFjdEV4aXRlZAAAAAAAFgAAADVgZXhpdGAgd2FzIGludm9rZWQgd2l0aG91dCBhIG5vbi1lbXB0eSByZWFzb24gc3RyaW5nLgAAAAAAABFNaXNzaW5nRXhpdFJlYXNvbgAAAAAAABcAAABGRGlzdHJpYnV0aW9uIHdhcyByZXF1ZXN0ZWQgZm9yIGEgY3ljbGUgd2hvc2UgZXZpZGVuY2UgaXMgbm90IGFwcHJvdmVkLgAAAAAAE0V2aWRlbmNlTm90QXBwcm92ZWQAAAAAGAAAADtBIHJldmlldyB3YXMgcmVxdWVzdGVkIG9uIGEgY3ljbGUgdGhhdCBpcyBub3QgYXdhaXRpbmcgb25lLgAAAAAXSW52YWxpZFN0YXR1c1RyYW5zaXRpb24AAAAAGQAAAD1BIHJlamVjdGlvbiBvciBkaXNwdXRlIHdhcyBzdWJtaXR0ZWQgd2l0aG91dCBhIHJlYXNvbiBzdHJpbmcuAAAAAAAAE01pc3NpbmdSZXZpZXdSZWFzb24AAAAAGgAAAChObyBldmlkZW5jZSByZWNvcmQgZXhpc3RzIGZvciB0aGUgY3ljbGUuAAAAEEV2aWRlbmNlTm90Rm91bmQAAAAbAAAANk51bWJlciBvZiBob2xkZXJzIGV4Y2VlZHMgdGhlIG1heGltdW0gc3VwcG9ydGVkIGJvdW5kLgAAAAAADlRvb01hbnlIb2xkZXJzAAAAAAAcAAAA02BjbGFpbV93aXRoaGVsZGAgd2FzIGludm9rZWQgYnkgYSBob2xkZXIgd2l0aCBubyBVU0RDIHJlc2VydmVkIGZvciB0aGVtLgpDb3ZlcnMgYm90aCAibmV2ZXIgaGFkIGEgcmVqZWN0ZWQgc3dhcCBsZWciIGFuZCAiYWxyZWFkeSBjbGFpbWVkIiwgc28gYQpzZWNvbmQgY2xhaW0gb2YgdGhlIHNhbWUgZnVuZHMgaXMgcmVqZWN0ZWQgcmF0aGVyIHRoYW4gcGFpZCB0d2ljZS4AAAAAD05vdGhpbmdXaXRoaGVsZAAAAAAd",
         "AAAAAQAAAAAAAAAAAAAAD1N3YXBGYWlsZWRFdmVudAAAAAAEAAAAAAAAABRhbW91bnRfdXNkY19yZXRhaW5lZAAAAAsAAAAAAAAACGN5Y2xlX2lkAAAAEAAAAAAAAAAGaG9sZGVyAAAAAAATAAAAP2BQYXlvdXRFcnJvcmAgZGlzY3JpbWluYW50IGRlc2NyaWJpbmcgd2h5IHRoZSBsZWcgd2FzIHJlamVjdGVkLgAAAAALcmVhc29uX2NvZGUAAAAABA==",
         "AAAAAQAAAJ5FbWl0dGVkIG9uY2Ugd2hlbiB0aGUgYWxseS9wcm9wZXJ0eSByZWxhdGlvbnNoaXAgaXMgcGVybWFuZW50bHkgdGVybWluYXRlZC4KQ2xpZW50cyBjYW4gd2F0Y2ggdGhpcyB0byByZW5kZXIgdGhlIHRlcm1pbmFsIHN0YXRlIHdpdGhvdXQgcG9sbGluZwpgZXhpdF9zdGF0dXNgLgAAAAAAAAAAABFFeGl0UmVjb3JkZWRFdmVudAAAAAAAAAQAAAAAAAAABGFsbHkAAAATAAAAAAAAAAJhdAAAAAAABgAAAAAAAAAIb3BlcmF0b3IAAAATAAAAAAAAAAZyZWFzb24AAAAAABA=",
         "AAAAAQAAAAAAAAAAAAAAEVN3YXBFeGVjdXRlZEV2ZW50AAAAAAAABAAAAAAAAAAPYW1vdW50X2V1cmNfb3V0AAAAAAsAAAAAAAAADmFtb3VudF91c2RjX2luAAAAAAALAAAAAAAAAAhjeWNsZV9pZAAAABAAAAAAAAAABmhvbGRlcgAAAAAAEw==",
+        "AAAAAQAAAWVFbWl0dGVkIG9uY2UgcGVyIGhvbGRlciBwZXIgY3ljbGUgd2l0aCB0aGUgc2V0dGxlbWVudCBhY3R1YWxseSByZWNvcmRlZC4KCkRlbGliZXJhdGVseSBub3QgZW1pdHRlZDogcGVyLWhvbGRlciBzZXR0bGVtZW50IGV2ZW50cyB3b3VsZCBhZGQgb25lIGxlZGdlcgplbnRyeSBlYWNoLCB3aGljaCBpcyB3aGF0IHB1c2hlcyBhIHRlbi1ob2xkZXIgYGV4ZWN1dGVfZGlzdHJpYnV0aW9uYCBwYXN0CnRoZSBmb290cHJpbnQgbGltaXQuIFRoZSBwZXJzaXN0ZWQgcGVyLWN5Y2xlIHNldHRsZW1lbnQgcmVjb3JkIGlzIHRoZQppbnZlc3Rvci1mYWNpbmcgc291cmNlIG9mIHRydXRoLCBhbmQgaXQgb3V0bGl2ZXMgZXZlbnRzIGFueXdheS4AAAAAAAAAAAAAEkhvbGRlclNldHRsZWRFdmVudAAAAAAAAgAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAAAAAApzZXR0bGVtZW50AAAAAAfQAAAAEEhvbGRlclNldHRsZW1lbnQ=",
+        "AAAAAQAAANZFbWl0dGVkIHdoZW4gYSBob2xkZXIgcmVjbGFpbXMgVVNEQyByZXNlcnZlZCBmb3IgYSByZWplY3RlZCBzd2FwIGxlZy4KClRoZSBhbW91bnQgaXMgdGhlIHJlc2VydmVkIGJhbGFuY2UgdGhhdCB3YXMgcmVsZWFzZWQsIHNvIGEgd2F0Y2hlciBjYW4KY29uZmlybSB0aGF0IGV2ZXJ5IHVuaXQgb2Ygd2l0aGhlbGQgVVNEQyBsZWZ0IHRoZSBjb250cmFjdCBleGFjdGx5IG9uY2UuAAAAAAAAAAAAFFdpdGhoZWxkQ2xhaW1lZEV2ZW50AAAAAgAAAAAAAAALYW1vdW50X3VzZGMAAAAACwAAAAAAAAAGaG9sZGVyAAAAAAAT",
         "AAAAAQAAAAAAAAAAAAAAFUV2aWRlbmNlRGlzcHV0ZWRFdmVudAAAAAAAAAQAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAAAAAAtkaXNwdXRlZF9hdAAAAAAGAAAAAAAAAAZyZWFzb24AAAAAABA=",
         "AAAAAQAAAAAAAAAAAAAAFUV2aWRlbmNlUmVjb3JkZWRFdmVudAAAAAAAAAQAAAAAAAAABGFsbHkAAAATAAAAAAAAAAhjeWNsZV9pZAAAABAAAAAAAAAACG9wZXJhdG9yAAAAEwAAAAAAAAAMdG90YWxfaW5jb21lAAAACw==",
         "AAAAAQAAAAAAAAAAAAAAFUV2aWRlbmNlUmV2aWV3ZWRFdmVudAAAAAAAAAUAAAAAAAAACGFwcHJvdmVkAAAAAQAAAAAAAAAIY3ljbGVfaWQAAAAQAAAAAAAAAAhvcGVyYXRvcgAAABMAAAAAAAAABnJlYXNvbgAAAAAAEAAAAAAAAAALcmV2aWV3ZWRfYXQAAAAABg==",
         "AAAAAQAAAAAAAAAAAAAAFkV2aWRlbmNlU3VibWl0dGVkRXZlbnQAAAAAAAQAAAAAAAAABGFsbHkAAAATAAAAAAAAAAhjeWNsZV9pZAAAABAAAAAAAAAADHN1Ym1pdHRlZF9hdAAAAAYAAAAAAAAADHRvdGFsX2luY29tZQAAAAs=",
         "AAAAAQAAAAAAAAAAAAAAFlBheW91dEluaXRpYWxpemVkRXZlbnQAAAAAAAMAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEYWxseQAAABMAAAAAAAAACG9wZXJhdG9yAAAAEw==",
         "AAAAAQAAAAAAAAAAAAAAGkN1cnJlbmN5UHJlZmVyZW5jZVNldEV2ZW50AAAAAAACAAAAAAAAAAhjdXJyZW5jeQAAB9AAAAAIQ3VycmVuY3kAAAAAAAAABmhvbGRlcgAAAAAAEw==",
-        "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAADwAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAAIT3BlcmF0b3IAAAAAAAAAAAAAAARBbGx5AAAAAAAAAAAAAAAUUGxhdGZvcm1GZWVSZWNpcGllbnQAAAAAAAAAAAAAAAtJbmNvbWVUb2tlbgAAAAAAAAAAAAAAAAlXaGl0ZWxpc3QAAAAAAAAAAAAAAAAAAAlVc2RjVG9rZW4AAAAAAAAAAAAAAAAAAAlFdXJjVG9rZW4AAAAAAAAAAAAAAAAAAApTd2FwUm91dGVyAAAAAAAAAAAAAAAAAAZQYXVzZWQAAAAAAAAAAAAAAAAABUd1YXJkAAAAAAAAAQAAAAAAAAAIRXZpZGVuY2UAAAABAAAAEAAAAAEAAAAAAAAAEkN1cnJlbmN5UHJlZmVyZW5jZQAAAAAAAQAAABMAAAABAAAAAAAAAAxTd2FwRmFpbHVyZXMAAAABAAAAEAAAAAAAAAAAAAAABEV4aXQ=",
-      ]),
-      options,
-    );
+        "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAEgAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAAIT3BlcmF0b3IAAAAAAAAAAAAAAARBbGx5AAAAAAAAAAAAAAAUUGxhdGZvcm1GZWVSZWNpcGllbnQAAAAAAAAAAAAAAAtJbmNvbWVUb2tlbgAAAAAAAAAAAAAAAAlXaGl0ZWxpc3QAAAAAAAAAAAAAAAAAAAlVc2RjVG9rZW4AAAAAAAAAAAAAAAAAAAlFdXJjVG9rZW4AAAAAAAAAAAAAAAAAAApTd2FwUm91dGVyAAAAAAAAAAAAAAAAAAZQYXVzZWQAAAAAAAAAAAAAAAAABUd1YXJkAAAAAAAAAQAAAAAAAAAIRXZpZGVuY2UAAAABAAAAEAAAAAEAAAAAAAAAEkN1cnJlbmN5UHJlZmVyZW5jZQAAAAAAAQAAABMAAAABAAAAAAAAAAxTd2FwRmFpbHVyZXMAAAABAAAAEAAAAAAAAAAAAAAABEV4aXQAAAABAAAASVBlcnNpc3RlZCBgRGlzdHJpYnV0aW9uU3VtbWFyeWAgZm9yIGEgY3ljbGUsIHdyaXR0ZW4gb25jZSBhdCBwYXlvdXQgdGltZS4AAAAAAAATRGlzdHJpYnV0aW9uU3VtbWFyeQAAAAABAAAAEAAAAAEAAAFQUGVyc2lzdGVkIHBlci1jeWNsZSBzZXR0bGVtZW50IG91dGNvbWVzLCBvbmUgZW50cnkgcGVyIHBhaWQgaG9sZGVyLgoKQSBzaW5nbGUgZW50cnkgcGVyIGN5Y2xlIHJhdGhlciB0aGFuIG9uZSBrZXkgcGVyIChjeWNsZSwgaG9sZGVyKTogdGhlCmRpc3RyaWJ1dGlvbiBhbHJlYWR5IHdyaXRlcyBvbmUgZW50cnkgcGVyIGhvbGRlciwgYW5kIGEgbWF4IG9mCmBNQVhfSE9MREVSU2Agc2V0dGxlbWVudHMgaW4gb25lIHZlY3RvciBrZWVwcyBgZXhlY3V0ZV9kaXN0cmlidXRpb25gCmluc2lkZSB0aGUgbGVkZ2VyLWZvb3RwcmludCBidWRnZXQgYXQgdGhlIHN1cHBvcnRlZCBob2xkZXIgY291bnQuAAAAC1NldHRsZW1lbnRzAAAAAAEAAAAQAAAAAQAAAIVSdW5uaW5nIHRvdGFsIG9mIFVTREMgcmVzZXJ2ZWQgaW4gdGhpcyBjb250cmFjdCBmb3IgYSBob2xkZXIgd2hvc2UgRVVSQwpzd2FwIGxlZ3Mgd2VyZSByZWplY3RlZCwgYW5kIHdoaWNoIHRoZXkgaGF2ZSBub3QgeWV0IGNsYWltZWQuAAAAAAAAD1dpdGhoZWxkQmFsYW5jZQAAAAABAAAAEw==" ]),
+      options
+    )
   }
   public readonly fromJSON = {
     exit: this.txFromJSON<null>,
-    pause: this.txFromJSON<null>,
-    unpause: this.txFromJSON<null>,
-    is_paused: this.txFromJSON<boolean>,
-    initialize: this.txFromJSON<null>,
-    exit_status: this.txFromJSON<Option<ExitRecord>>,
-    flag_dispute: this.txFromJSON<null>,
-    get_evidence: this.txFromJSON<Option<EvidenceRecord>>,
-    start_review: this.txFromJSON<null>,
-    record_evidence: this.txFromJSON<null>,
-    review_evidence: this.txFromJSON<null>,
-    submit_evidence: this.txFromJSON<null>,
-    get_swap_failures: this.txFromJSON<Array<SwapFailureRecord>>,
-    execute_distribution: this.txFromJSON<DistributionSummary>,
-    eurc_swap_path_status: this.txFromJSON<Option<EurcSwapPathStatus>>,
-    get_currency_preference: this.txFromJSON<Currency>,
-    set_currency_preference: this.txFromJSON<null>,
-  };
+        pause: this.txFromJSON<null>,
+        unpause: this.txFromJSON<null>,
+        is_paused: this.txFromJSON<boolean>,
+        initialize: this.txFromJSON<null>,
+        exit_status: this.txFromJSON<Option<ExitRecord>>,
+        flag_dispute: this.txFromJSON<null>,
+        get_evidence: this.txFromJSON<Option<EvidenceRecord>>,
+        start_review: this.txFromJSON<null>,
+        claim_withheld: this.txFromJSON<i128>,
+        get_settlement: this.txFromJSON<Option<HolderSettlement>>,
+        get_settlements: this.txFromJSON<Array<HolderSettlement>>,
+        record_evidence: this.txFromJSON<null>,
+        review_evidence: this.txFromJSON<null>,
+        submit_evidence: this.txFromJSON<null>,
+        withheld_balance: this.txFromJSON<i128>,
+        get_swap_failures: this.txFromJSON<Array<SwapFailureRecord>>,
+        execute_distribution: this.txFromJSON<DistributionSummary>,
+        eurc_swap_path_status: this.txFromJSON<Option<EurcSwapPathStatus>>,
+        get_currency_preference: this.txFromJSON<Currency>,
+        set_currency_preference: this.txFromJSON<null>,
+        get_distribution_summary: this.txFromJSON<Option<DistributionSummary>>
+  }
 }
